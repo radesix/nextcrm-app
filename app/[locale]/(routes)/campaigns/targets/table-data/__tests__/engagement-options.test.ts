@@ -2,6 +2,7 @@ import {
   targetEngagementStatus,
   engagementStatusLabel,
   engagementBadgeVariant,
+  engagementRank,
 } from "../engagement-options";
 
 describe("targetEngagementStatus", () => {
@@ -68,5 +69,18 @@ describe("label + badge helpers", () => {
     expect(engagementBadgeVariant("OPENED")).toBe("secondary");
     expect(engagementBadgeVariant("SENT")).toBe("outline");
     expect(engagementBadgeVariant("NONE")).toBe("outline");
+  });
+
+  it("ranks by engagement strength for sorting (Clicked>Opened>Sent>Not sent)", () => {
+    expect(engagementRank("CLICKED")).toBeGreaterThan(engagementRank("OPENED"));
+    expect(engagementRank("OPENED")).toBeGreaterThan(engagementRank("SENT"));
+    expect(engagementRank("SENT")).toBeGreaterThan(engagementRank("NONE"));
+    expect(engagementRank("NONE")).toBe(0);
+    expect(engagementRank(undefined)).toBe(0);
+    // Sorting a shuffled set ascending yields NONE..CLICKED (not alphabetical).
+    const sorted = ["SENT", "NONE", "CLICKED", "OPENED"].sort(
+      (a, b) => engagementRank(a) - engagementRank(b),
+    );
+    expect(sorted).toEqual(["NONE", "SENT", "OPENED", "CLICKED"]);
   });
 });

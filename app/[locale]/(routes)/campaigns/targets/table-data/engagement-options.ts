@@ -18,6 +18,19 @@ export type TargetEmailEngagement = {
   homepage_clicked_at?: Date | string | null;
 };
 
+// Rank for sorting (higher = more engaged). The column sorts by this, NOT by the
+// status string (which would sort alphabetically: Clicked < Not sent < Opened < Sent).
+const ENGAGEMENT_RANK: Record<EngagementStatus, number> = {
+  CLICKED: 3,
+  OPENED: 2,
+  SENT: 1,
+  NONE: 0,
+};
+
+export function engagementRank(value?: string | null): number {
+  return ENGAGEMENT_RANK[(value as EngagementStatus) ?? "NONE"] ?? 0;
+}
+
 /**
  * Furthest engagement a target reached across ALL its outreach emails:
  * CLICKED (the homepage link specifically) > OPENED > SENT > NONE.
@@ -25,6 +38,12 @@ export type TargetEmailEngagement = {
  * A click/open implies the email was sent, so those outrank SENT. Only a
  * successful send (status "SENT") counts as SENT — a FAILED/DRAFT row alone is
  * NONE. Order-independent.
+ *
+ * NOTE (intentional): this list-column status reflects the FURTHEST state across
+ * ALL of a target's emails, whereas the target-detail HomepageEngagement line
+ * reflects only the most-recent homepage-bearing email. They can legitimately
+ * differ (column "Opened" vs detail "not opened yet"); CLICKED stays aligned since
+ * both key off homepage_clicked_at. See BasicView.tsx.
  */
 export function targetEngagementStatus(
   emails: TargetEmailEngagement[] | null | undefined,

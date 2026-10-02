@@ -712,9 +712,9 @@ risk is low but they are upstream paths.
 
 | Upstream file | +/− | Insert-only? | What / where | Risk |
 |---|---|---|---|---|
-| `actions/crm/get-targets.ts` | +6/−0 | **insert-only** | Added a `target_emails: { where: { deletedAt: null }, select: { status, opened_at, homepage_clicked_at } }` entry to the existing `include` (alongside `crate_by_user`, `target_lists`). No other change. | Low (additive include; on conflict keep the entry) |
+| `actions/crm/get-targets.ts` | +7/−0 | **insert-only** | Added a `target_emails: { where: { deletedAt: null }, select: { status, opened_at, homepage_clicked_at } }` entry to the existing `include` (alongside `crate_by_user`, `target_lists`). No other change. | Low (additive include; on conflict keep the entry) |
 | `.../targets/table-data/schema.tsx` | +11/−0 | **insert-only** | Appended an optional `target_emails` array to the `targetSchema` Zod object (after `target_lists`). | Low |
-| `.../targets/table-components/columns.tsx` | +~26/−0 | **insert-only** | Added an `engagement-options` import and a new derived column object (`id: "engagement"`, accessorFn → `targetEngagementStatus`, Badge cell, faceted `filterFn`) **immediately after the `triage_status` column**. | Low (on conflict re-insert after triage) |
+| `.../targets/table-components/columns.tsx` | +~34/−0 | **insert-only** | Added an `engagement-options` import and a new derived column object (`id: "engagement"`, accessorFn → `targetEngagementStatus`, Badge cell, faceted `filterFn`, rank `sortingFn`) **immediately after the `triage_status` column**. | Low (on conflict re-insert after triage) |
 | `.../targets/table-components/data-table-toolbar.tsx` | +9/−0 | **insert-only** | Added an `ENGAGEMENT_STATUS_OPTIONS` import and a `<DataTableFacetedFilter column="engagement" …>` block directly after the Triage filter block. | Low |
 
 Fork-owned (new): `.../targets/table-data/engagement-options.ts` (+ `__tests__/engagement-options.test.ts`)

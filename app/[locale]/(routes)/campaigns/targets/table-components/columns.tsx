@@ -16,6 +16,7 @@ import {
   targetEngagementStatus,
   engagementStatusLabel,
   engagementBadgeVariant,
+  engagementRank,
 } from "../table-data/engagement-options";
 import {
   targetTypeLabel,
@@ -253,6 +254,10 @@ export const columns: ColumnDef<Target>[] = [
       );
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
+    // Sort by engagement strength (Clicked>Opened>Sent>Not sent), not the
+    // alphabetical status string (which would put "Not sent" between the others).
+    sortingFn: (a, b, id) =>
+      engagementRank(a.getValue(id)) - engagementRank(b.getValue(id)),
     enableSorting: true,
     enableHiding: true,
   },
