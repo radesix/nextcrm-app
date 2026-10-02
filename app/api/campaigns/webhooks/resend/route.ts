@@ -10,6 +10,26 @@ import { createHmac, timingSafeEqual } from "crypto";
 // window to reject replayed deliveries.
 const SVIX_TOLERANCE_SECONDS = 5 * 60;
 
+// When the event actually happened per Resend (open/click sub-objects carry a
+// `timestamp`; otherwise the event's `created_at`). Returns null on absent/invalid
+// so the caller can fall back to ingest time.
+function resolveEventTime(
+  type: string,
+  data: {
+    created_at?: string;
+    open?: { timestamp?: string };
+    click?: { timestamp?: string };
+  },
+): Date | null {
+  const iso =
+    (type === "email.opened" ? data.open?.timestamp : undefined) ??
+    (type === "email.clicked" ? data.click?.timestamp : undefined) ??
+    data.created_at;
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function timingSafeEqualStr(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -60,11 +80,25 @@ export async function POST(req: NextRequest) {
 
   const event = JSON.parse(body) as {
     type: string;
-    data: { message_id?: string; email_id?: string; created_at: string };
+    created_at?: string;
+    data: {
+      message_id?: string;
+      email_id?: string;
+      created_at?: string;
+      open?: { timestamp?: string };
+      click?: { link?: string; timestamp?: string };
+    };
   };
 
-  const messageId = event.data.message_id ?? event.data.email_id;
+  // Resend events carry BOTH `email_id` (the id returned by emails.send and stored
+  // as resend_message_id) and `message_id` (the RFC 5322 Message-ID header,
+  // `<...@...>`). Match on `email_id`; matching the header never finds the row and
+  // silently drops every open/click (affected campaign AND target-email tracking).
+  const messageId = event.data.email_id ?? event.data.message_id;
   if (!messageId) return NextResponse.json({ ok: true });
+
+  // Prefer the event's own timestamp (when Resend says it happened) over ingest time.
+  const eventAt = resolveEventTime(event.type, event.data) ?? new Date();
 
   const send = await prismadb.crm_campaign_sends.findFirst({
     where: { resend_message_id: messageId },
@@ -114,7 +148,7 @@ export async function POST(req: NextRequest) {
       if (!send.opened_at) {
         await prismadb.crm_campaign_sends.update({
           where: { id: send.id },
-          data: { opened_at: new Date() },
+          data: { opened_at: eventAt },
         });
       }
       break;
@@ -123,7 +157,7 @@ export async function POST(req: NextRequest) {
       if (!send.clicked_at) {
         await prismadb.crm_campaign_sends.update({
           where: { id: send.id },
-          data: { clicked_at: new Date() },
+          data: { clicked_at: eventAt },
         });
       }
       break;
