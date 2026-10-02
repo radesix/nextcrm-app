@@ -30,6 +30,19 @@ function resolveEventTime(
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// fork: true when a clicked link points at THIS email's homepage preview
+// (/p/<slug>). Resend's click event reports the ORIGINAL (pre-tracking-rewrite)
+// link, i.e. whatever the template embedded as homepage_url (the preview_url).
+function linkTargetsHomepage(link: string | undefined, slug: string): boolean {
+  if (!link) return false;
+  try {
+    const path = new URL(link).pathname.replace(/\/+$/, "");
+    return path === `/p/${slug}`;
+  } catch {
+    return link.includes(`/p/${slug}`);
+  }
+}
+
 function timingSafeEqualStr(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -109,19 +122,41 @@ export async function POST(req: NextRequest) {
   if (!send) {
     const targetEmail = await prismadb.crm_Target_Email.findFirst({
       where: { resend_message_id: messageId },
-      select: { id: true, opened_at: true, clicked_at: true },
+      select: {
+        id: true,
+        targetId: true,
+        opened_at: true,
+        clicked_at: true,
+        homepage_clicked_at: true,
+      },
     });
     if (targetEmail) {
       if (event.type === "email.opened" && !targetEmail.opened_at) {
         await prismadb.crm_Target_Email.update({
           where: { id: targetEmail.id },
-          data: { opened_at: new Date() },
+          data: { opened_at: eventAt },
         });
-      } else if (event.type === "email.clicked" && !targetEmail.clicked_at) {
-        await prismadb.crm_Target_Email.update({
-          where: { id: targetEmail.id },
-          data: { clicked_at: new Date() },
-        });
+      } else if (event.type === "email.clicked") {
+        // Any tracked link sets clicked_at. If the clicked link is THIS email's
+        // homepage /p/<slug>, also stamp homepage_clicked_at (fork — lets the UI
+        // say the homepage link specifically was clicked, not just "a link").
+        const data: { clicked_at?: Date; homepage_clicked_at?: Date } = {};
+        if (!targetEmail.clicked_at) data.clicked_at = eventAt;
+        if (!targetEmail.homepage_clicked_at && event.data.click?.link) {
+          const hp = await prismadb.crm_Target_Homepage.findUnique({
+            where: { targetId: targetEmail.targetId },
+            select: { slug: true },
+          });
+          if (hp && linkTargetsHomepage(event.data.click.link, hp.slug)) {
+            data.homepage_clicked_at = eventAt;
+          }
+        }
+        if (Object.keys(data).length > 0) {
+          await prismadb.crm_Target_Email.update({
+            where: { id: targetEmail.id },
+            data,
+          });
+        }
       }
     }
     return NextResponse.json({ ok: true }); // handled or unknown message

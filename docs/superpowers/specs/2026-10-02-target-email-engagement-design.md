@@ -1,8 +1,26 @@
 # Target email engagement — webhook fix + engagement line (design)
 
-**Status:** Draft — awaiting approval
+**Status:** ✅ Implemented
 **Date:** 2026-10-02
 **Branch:** `feat/target-email-engagement`
+
+## Lessons Learned
+
+- **Resend events carry two ids.** `data.message_id` is the RFC 5322 header, `data.email_id` is the
+  id we store. The pre-existing `message_id ?? email_id` matched the header → silent 200, nothing
+  recorded (for campaigns too). Promoted to `LESSONS_LEARNED.md`.
+- **`clicked_at` ≠ homepage click.** Resend fires `email.clicked` for ANY tracked link (unsubscribe
+  included), so the homepage-specific signal needs `data.click.link` matched to `/p/<slug>`.
+- **Self-view exclusion stays cheap** — a Cookie-header presence check (no `getSession()`), to keep
+  the public `/p/` serving path fast.
+
+## Known Gaps
+
+- **E2E:** live Resend delivery (open/click → badge + engagement line) and the `/p/` self-view check
+  are manual-on-QA only (need real open/click tracking + a `/p/<slug>` request). The webhook matching,
+  homepage-click, and self-view logic are unit-covered; recorded as an E2E gap in the manual-testing doc.
+- **Local DB drift** (`source_url`/`screenshot_key` columns from prior local `db push`) is unrelated;
+  `prisma migrate reset` clears it. Does not affect CI/QA/prod (committed-migration builds).
 
 ## Problem
 

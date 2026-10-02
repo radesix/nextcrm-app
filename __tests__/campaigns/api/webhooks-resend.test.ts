@@ -8,6 +8,9 @@ jest.mock("@/lib/prisma", () => ({
       findFirst: jest.fn(),
       update: jest.fn(),
     },
+    crm_Target_Homepage: {
+      findUnique: jest.fn(),
+    },
   },
 }));
 
@@ -227,6 +230,50 @@ describe("Resend webhook — Svix signature verification", () => {
       });
       await POST(webhookRequest(openedEvent));
       expect(prismadb.crm_Target_Email.update).not.toHaveBeenCalled();
+    });
+
+    // fork (Commit B): homepage-specific click + event timestamp on target emails.
+    it("stamps homepage_clicked_at when the clicked link is the homepage /p/<slug>", async () => {
+      (prismadb.crm_Target_Email.findFirst as jest.Mock).mockResolvedValue({
+        id: "te-1", targetId: "t-1", opened_at: null, clicked_at: null, homepage_clicked_at: null,
+      });
+      (prismadb.crm_Target_Homepage.findUnique as jest.Mock).mockResolvedValue({ slug: "acme" });
+      // bothIdsClicked's click.link is https://crm.example/p/acme
+      await POST(webhookRequest(bothIdsClicked));
+      expect(prismadb.crm_Target_Email.update).toHaveBeenCalledWith({
+        where: { id: "te-1" },
+        data: { clicked_at: new Date(EVENT_TS), homepage_clicked_at: new Date(EVENT_TS) },
+      });
+    });
+
+    it("sets clicked_at but NOT homepage_clicked_at for a non-homepage link", async () => {
+      const unsubClick = JSON.stringify({
+        type: "email.clicked",
+        data: {
+          email_id: "re_abc123",
+          click: { link: "https://crm.example/api/crm/targets/unsubscribe?token=x", timestamp: EVENT_TS },
+        },
+      });
+      (prismadb.crm_Target_Email.findFirst as jest.Mock).mockResolvedValue({
+        id: "te-1", targetId: "t-1", opened_at: null, clicked_at: null, homepage_clicked_at: null,
+      });
+      (prismadb.crm_Target_Homepage.findUnique as jest.Mock).mockResolvedValue({ slug: "acme" });
+      await POST(webhookRequest(unsubClick));
+      expect(prismadb.crm_Target_Email.update).toHaveBeenCalledWith({
+        where: { id: "te-1" },
+        data: { clicked_at: new Date(EVENT_TS) },
+      });
+    });
+
+    it("records the event's own timestamp for a target-email open", async () => {
+      (prismadb.crm_Target_Email.findFirst as jest.Mock).mockResolvedValue({
+        id: "te-1", targetId: "t-1", opened_at: null, clicked_at: null, homepage_clicked_at: null,
+      });
+      await POST(webhookRequest(bothIdsOpened));
+      expect(prismadb.crm_Target_Email.update).toHaveBeenCalledWith({
+        where: { id: "te-1" },
+        data: { opened_at: new Date(EVENT_TS) },
+      });
     });
   });
 });
