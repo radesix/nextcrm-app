@@ -10,9 +10,11 @@ import { createHmac, timingSafeEqual } from "crypto";
 // window to reject replayed deliveries.
 const SVIX_TOLERANCE_SECONDS = 5 * 60;
 
-// When the event actually happened per Resend (open/click sub-objects carry a
-// `timestamp`; otherwise the event's `created_at`). Returns null on absent/invalid
-// so the caller can fall back to ingest time.
+// When the event actually happened per Resend. The open/click sub-objects carry a
+// precise `timestamp`; otherwise fall back to the EVENT's emission time
+// (`event.created_at`) and only then to `data.created_at` (the email's own
+// create/send time, which is earlier than the real open). Returns null on
+// absent/invalid so the caller can fall back to ingest time.
 function resolveEventTime(
   type: string,
   data: {
@@ -20,10 +22,12 @@ function resolveEventTime(
     open?: { timestamp?: string };
     click?: { timestamp?: string };
   },
+  eventCreatedAt?: string,
 ): Date | null {
   const iso =
     (type === "email.opened" ? data.open?.timestamp : undefined) ??
     (type === "email.clicked" ? data.click?.timestamp : undefined) ??
+    eventCreatedAt ??
     data.created_at;
   if (!iso) return null;
   const d = new Date(iso);
@@ -91,7 +95,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  const event = JSON.parse(body) as {
+  let event: {
     type: string;
     created_at?: string;
     data: {
@@ -102,6 +106,12 @@ export async function POST(req: NextRequest) {
       click?: { link?: string; timestamp?: string };
     };
   };
+  // A signature-verified body should be valid JSON, but never 500 on a malformed one.
+  try {
+    event = JSON.parse(body);
+  } catch {
+    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+  }
 
   // Resend events carry BOTH `email_id` (the id returned by emails.send and stored
   // as resend_message_id) and `message_id` (the RFC 5322 Message-ID header,
@@ -111,7 +121,8 @@ export async function POST(req: NextRequest) {
   if (!messageId) return NextResponse.json({ ok: true });
 
   // Prefer the event's own timestamp (when Resend says it happened) over ingest time.
-  const eventAt = resolveEventTime(event.type, event.data) ?? new Date();
+  const eventAt =
+    resolveEventTime(event.type, event.data, event.created_at) ?? new Date();
 
   const send = await prismadb.crm_campaign_sends.findFirst({
     where: { resend_message_id: messageId },
@@ -143,12 +154,20 @@ export async function POST(req: NextRequest) {
         const data: { clicked_at?: Date; homepage_clicked_at?: Date } = {};
         if (!targetEmail.clicked_at) data.clicked_at = eventAt;
         if (!targetEmail.homepage_clicked_at && event.data.click?.link) {
-          const hp = await prismadb.crm_Target_Homepage.findUnique({
-            where: { targetId: targetEmail.targetId },
+          const hp = await prismadb.crm_Target_Homepage.findFirst({
+            where: { targetId: targetEmail.targetId, deletedAt: null },
             select: { slug: true },
           });
           if (hp && linkTargetsHomepage(event.data.click.link, hp.slug)) {
             data.homepage_clicked_at = eventAt;
+          } else if (hp) {
+            // Visibility: a click on an email whose target HAS a live homepage, but
+            // the link didn't resolve to /p/<slug>. Expected for unsubscribe/other
+            // links; a sustained absence of homepage matches here would reveal a
+            // regression (e.g. Resend changing the click.link format).
+            console.log("[RESEND_WEBHOOK] click did not match homepage", {
+              slug: hp.slug,
+            });
           }
         }
         if (Object.keys(data).length > 0) {

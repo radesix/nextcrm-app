@@ -133,6 +133,12 @@ export async function BasicView({ data }: TargetBasicViewProps) {
   // Engagement for the homepage line: the most recent SENT email that included the
   // homepage link (list is newest-first). Its open/homepage-click come from the
   // Resend webhook.
+  // NOTE (intentional, by design): this detail line reflects ONLY that most-recent
+  // homepage-bearing email, whereas the Targets-LIST "Engagement" column shows the
+  // FURTHEST state across ALL of a target's emails (targetEngagementStatus). So they
+  // can legitimately differ (e.g. an older email was opened but the latest wasn't):
+  // the column may say "Opened" while this line says "not opened yet". CLICKED stays
+  // aligned (both key off homepage_clicked_at); OPENED/SENT can diverge.
   const homepageEmail =
     targetEmails.find((e) => e.status === "SENT" && e.included_homepage) ?? null;
 

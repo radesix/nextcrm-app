@@ -9,7 +9,7 @@ jest.mock("@/lib/prisma", () => ({
       update: jest.fn(),
     },
     crm_Target_Homepage: {
-      findUnique: jest.fn(),
+      findFirst: jest.fn(),
     },
   },
 }));
@@ -191,6 +191,22 @@ describe("Resend webhook — Svix signature verification", () => {
       const arg = (prismadb.crm_campaign_sends.update as jest.Mock).mock.calls[0][0];
       expect(arg.data.opened_at).toEqual(new Date(EVENT_TS));
     });
+
+    it("falls back to the event's created_at (not the email's) when the sub-timestamp is absent", async () => {
+      const EVENT_CREATED = "2026-10-02T05:00:00.000Z";
+      const EMAIL_CREATED = "2026-09-30T00:00:00.000Z";
+      const noSubTs = JSON.stringify({
+        type: "email.opened",
+        created_at: EVENT_CREATED, // event emission time
+        data: { email_id: "re_abc123", created_at: EMAIL_CREATED }, // email create time (earlier)
+      });
+      (prismadb.crm_campaign_sends.findFirst as jest.Mock).mockResolvedValue({
+        id: "send-1", opened_at: null,
+      });
+      await POST(webhookRequest(noSubTs));
+      const arg = (prismadb.crm_campaign_sends.update as jest.Mock).mock.calls[0][0];
+      expect(arg.data.opened_at).toEqual(new Date(EVENT_CREATED));
+    });
   });
 
   // fork: one-off target outreach emails (no campaign send) get open/click too.
@@ -237,7 +253,7 @@ describe("Resend webhook — Svix signature verification", () => {
       (prismadb.crm_Target_Email.findFirst as jest.Mock).mockResolvedValue({
         id: "te-1", targetId: "t-1", opened_at: null, clicked_at: null, homepage_clicked_at: null,
       });
-      (prismadb.crm_Target_Homepage.findUnique as jest.Mock).mockResolvedValue({ slug: "acme" });
+      (prismadb.crm_Target_Homepage.findFirst as jest.Mock).mockResolvedValue({ slug: "acme" });
       // bothIdsClicked's click.link is https://crm.example/p/acme
       await POST(webhookRequest(bothIdsClicked));
       expect(prismadb.crm_Target_Email.update).toHaveBeenCalledWith({
@@ -257,7 +273,7 @@ describe("Resend webhook — Svix signature verification", () => {
       (prismadb.crm_Target_Email.findFirst as jest.Mock).mockResolvedValue({
         id: "te-1", targetId: "t-1", opened_at: null, clicked_at: null, homepage_clicked_at: null,
       });
-      (prismadb.crm_Target_Homepage.findUnique as jest.Mock).mockResolvedValue({ slug: "acme" });
+      (prismadb.crm_Target_Homepage.findFirst as jest.Mock).mockResolvedValue({ slug: "acme" });
       await POST(webhookRequest(unsubClick));
       expect(prismadb.crm_Target_Email.update).toHaveBeenCalledWith({
         where: { id: "te-1" },
