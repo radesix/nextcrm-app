@@ -782,3 +782,25 @@ the other CRM list pages (leads/accounts/contacts/…), which share the same non
 target, return, and confirm both are restored (keys `targets:columnFilters:v1`,
 `targets:sorting:v1`, `targets:pagination:v1`, `targets:columnVisibility:v1`); and
 `pnpm exec tsc --noEmit && pnpm lint`.
+
+---
+
+## feat/targets-homepage-fixes — remember homepage style + refine image replace  (PR: TBD)
+
+Part of the combined homepage/outreach fix branch. **1 upstream-owned file** touched
+(`prisma/schema.prisma`) — a single insert-only column on the **fork-added** `crm_Targets`
+model. Everything else is fork-owned (`inngest/functions/generate-homepage.ts`,
+`lib/homepage/**`, `actions/crm/targets/**`, the drawer). The migration file is new/fork-added
+(no upstream risk).
+
+| Upstream file | +/− | Insert-only? | What / where | Risk |
+|---|---|---|---|---|
+| `prisma/schema.prisma` | +4/−0 | **insert-only** | Added `homepage_style_prompt_id String? @db.Uuid` to `crm_Targets` (right after the existing `homepage_industry_prompt_id`), with a 3-line comment. `crm_Targets` is a fork model; no enum/relation/other-model change. Paired migration `20261003170000_add_homepage_style_prompt_id` (additive, nullable, no backfill). | Low (additive column on a fork model; on conflict re-add the single field) |
+
+Note: `prisma migrate dev` surfaced **pre-existing, unrelated drift** (`DocumentSystemType`
+dropped `INVOICE` in schema but not via a migration). NOT touched here — the migration was
+authored manually to contain only the additive column and avoid bundling that enum change.
+
+**Re-verify after any upstream merge:** `crm_Targets.homepage_style_prompt_id` still present,
+generate/refine still persist + reuse it (`resolveStyleDirection` precedence override→remembered→auto),
+and `pnpm exec jest generate-homepage select-style plan get-homepage-styles && pnpm exec tsc --noEmit`.

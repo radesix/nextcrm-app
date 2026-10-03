@@ -1138,5 +1138,37 @@
   `data-table.tsx`); most don't persist anything. The hook is reusable to fix the rest. Also note: a brief
   pre-restore flash on return is expected (restore runs in a mount effect, by design).
 
-<!-- Add new entries above this line, newest-relevant first within each section.
-     Create a new `## <area>` heading when a trap doesn't fit an existing one. -->
+## Homepage generation
+
+### A chosen homepage style silently changes (one-shot pick, hash drift)
+
+- **Symptom:** the operator picks a homepage style, but a later refine (or re-generate) comes back in a
+  different style; even without picking, the "auto" style changes on its own over time.
+- **Cause:** the style pick was a deliberately ONE-SHOT override that was never persisted — refine
+  re-resolved with no override and fell back to `pickStyleDirection`, an FNV-1a hash of the homepage id
+  `% activeStyles.length`. So (a) an explicit pick was dropped on the next refine, and (b) the auto pick
+  shifts whenever the style library is added to/removed from (the modulo moves). Contrast the *industry*
+  layer, which was already persisted per target.
+- **Fix / rule:** persist the chosen style per target (`crm_Targets.homepage_style_prompt_id`) and
+  **snapshot it on first generate even for an auto pick**; `resolveStyleDirection` precedence is
+  explicit-override → remembered → auto-hash, and both generate AND refine read + write it. Drawer defaults
+  to the remembered style. Rule: a "pick for me" default that must stay stable has to be **snapshotted**,
+  not recomputed each run — a hash over a mutable set is not stable.
+
+### Refine can't give you a different image — refine never (re)generated images
+
+- **Symptom:** "replace this image with a different one" during a refine does nothing — same image, or an
+  empty slot.
+- **Cause:** images were generated ONLY on the initial generate (`generateImages`, exactly `imageCount`).
+  `refineFlow` reused the existing `__RADE_IMG_n__` tokens and `materialize` STRIPS any token with no bytes
+  behind it — so a model-introduced token for a new image was deleted, and an unchanged token kept the old
+  image. There was no refine-time image path at all (it wasn't a "total limit", it was "no path").
+- **Fix / rule:** on a HUMAN refine, detect NEW tokens (present in the refined HTML but not the seed),
+  generate fresh bytes for them (capped `REFINE_IMAGE_CAP`, fail-open), and publish kept + new; a failed
+  new slot is omitted so `materialize` strips it (no broken `<img>`). The replacement subject comes from a
+  **bounded slice of the operator's refine text only** — never model/HTML-derived alt (which can carry
+  harvested-site content) — keeping the image-prompt injection surface to first-party input, like the
+  code-owned `planHomepageImages` prompts. Backend-only caveat: it relies on the model emitting a new token
+  for a replaced slot (per the refine-prompt instruction); reused tokens keep the old image.
+
+## Email / campaign rendering
