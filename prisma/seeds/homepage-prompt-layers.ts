@@ -3,7 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 /**
  * Starter library of homepage prompt LAYERS (spec Appendix A.2-A.4):
  *   - 1 HOMEPAGE_AVOID  (always applied),
- *   - 11 HOMEPAGE_STYLE (art-direction cards, stable-per-target pick),
+ *   - 12 HOMEPAGE_STYLE (art-direction cards, stable-per-target pick),
  *   - 15 HOMEPAGE_INDUSTRY (vertical cards; "Generic" is the default).
  * The refactored craft-only HOMEPAGE_BASE body lives in homepage-base-prompt.ts.
  *
@@ -16,7 +16,7 @@ import type { PrismaClient } from "@prisma/client";
  *
  * ID scheme (UUIDv4-shaped, last 12 hex digits carry the meaning):
  *   avoid    00000000-0000-4000-8000-0000000000a0
- *   style    00000000-0000-4000-8000-0000000057NN   (NN = 01..0b, spec order)
+ *   style    00000000-0000-4000-8000-0000000057NN   (NN = 01..0c, spec order)
  *   industry 00000000-0000-4000-8000-000000001dNN   (NN = 01..0f, spec order)
  * (HOMEPAGE_BASE keeps 00000000-0000-4000-8000-00000000ba5e.)
  *
@@ -94,6 +94,10 @@ const STYLES: Array<[string, string]> = [
   [
     "Corporate trust / institutional",
     "Geometric grotesk (Geist/Inter-style) sentence-case headlines with tight tracking, paired with an uppercase letter-spaced monospace for eyebrows and micro-labels; generously rounded cards, pill buttons and filter chips on a precise grid with ample whitespace; warm off-white base, one deep authoritative brand primary and a soft, muted secondary tint, with sparing semantic status pills (success-green / caution-amber); full-bleed photographic heroes under a brand related color duotone/gradient wash, image-led throughout; calm, purposeful motion — staggered scroll reveals, gentle hover lifts; trustworthy, modern-institutional, enterprise/government-grade.",
+  ],
+  [
+    "Heritage / aspirational serif",
+    "Elegant high-contrast serif display (Playfair-style) title-case headlines, a tall condensed uppercase sans for hero labels, and a clean grotesk body; refined, lightly-rounded cards and buttons on a structured grid with a subtle geometric line texture; light warm base, one deep traditional brand primary, and a sparing metallic accent (eyebrows, hairlines, icons, photo frames); full-bleed full-color lifestyle photography with centered caps labels, image-led and aspirational; gentle motion — soft scroll reveals, hover lifts; warm, refined, established, trustworthy.",
   ],
 ];
 
