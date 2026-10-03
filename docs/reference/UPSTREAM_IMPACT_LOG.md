@@ -757,3 +757,28 @@ overflow guards; `actions/crm/targets/generate-target-email.ts` — width-safe p
 `engagement`, the toolbar still has the Homepage faceted filter, `get-targets.ts` still includes `homepage`,
 the forms still label the COMPANY name fields as "Contact …" without a required `*`, and
 `pnpm exec jest homepage-options target-type render-email generate-target-email && pnpm exec tsc --noEmit`.
+
+---
+
+## fix/targets-list-persist-view — remember filters, sorting & rows-per-page  (PR: TBD)
+
+The Targets list lost its filters, sorting and rows-per-page every time the viewer opened a
+target and came back: the Server Component page unmounts `TargetsDataTable`, and those were held
+in plain `useState` (pagination wasn't even controlled — it fell back to the TanStack default of
+10). Only column visibility was persisted. Fix extends the **existing** `localStorage` persistence
+(already fork-added for column visibility) to filters, sorting and a now-controlled pagination,
+via a new fork-owned hook. **1 upstream-owned file** touched (already deeply fork-diverged).
+
+| Upstream file | +/− | Insert-only? | What / where | Risk |
+|---|---|---|---|---|
+| `.../targets/table-components/data-table.tsx` | ~+45/−30 | **modification** | Replaced the fork's inline column-visibility `localStorage` effects + the `columnFilters`/`sorting` `useState` with calls to the new `usePersistedTableState` hook; added controlled `pagination` state (persists `pageSize`, resets `pageIndex` to 0 on restore) wired via `state.pagination` + `onPaginationChange`. `rowSelection` stays ephemeral `useState`. | Low–moderate (same region the fork already rewrote for column-visibility persistence; upstream has plain `useState` here. On conflict, keep the hook-based state + the `pagination` entries in `state`/handlers.) |
+
+Fork-owned (new, no upstream risk): `.../targets/table-components/use-persisted-table-state.ts` —
+a generic `localStorage`-backed state hook (deferred mount-restore to avoid a hydration mismatch,
+skip-first-persist so the default can't clobber a saved value, optional `merge`). Reusable to fix
+the other CRM list pages (leads/accounts/contacts/…), which share the same non-persistence bug.
+
+**Re-verify after any upstream merge:** on the Targets list, set a filter + rows-per-page, open a
+target, return, and confirm both are restored (keys `targets:columnFilters:v1`,
+`targets:sorting:v1`, `targets:pagination:v1`, `targets:columnVisibility:v1`); and
+`pnpm exec tsc --noEmit && pnpm lint`.
