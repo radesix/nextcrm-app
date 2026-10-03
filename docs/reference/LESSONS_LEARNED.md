@@ -1114,5 +1114,29 @@
 - **Tell:** "fits on first generate, wide after regenerate" ⇒ look for an uncapped `<img>` (usually the
   screenshot) or a `<pre>`/long-URL in the body, not the shell wrapper (which is already 600px capped).
 
+## UI / list tables
+
+### List-page table state (filters, sorting, rows-per-page) resets when you leave and return
+
+- **Symptom:** on a CRM list page (Targets, Leads, …) you set a filter and a rows-per-page, open a
+  record, come back — and the table is reset: no filter, rows-per-page back to 10. "Doesn't remember
+  my settings."
+- **Cause:** the list page is a **Server Component** that renders the client table inside it, so
+  navigating to a detail page **unmounts** the table and remounts it on return. The TanStack state
+  (`columnFilters`, `sorting`) was plain `useState` (resets on unmount), and **pagination was
+  uncontrolled** — held only inside the table instance, so it fell back to the default `pageSize` of 10.
+  Plain `useState` defaults can never survive this; persistence must be **external** (localStorage / URL /
+  context).
+- **Fix / rule:** back each piece of table state with `localStorage` via
+  `.../campaigns/targets/table-components/use-persisted-table-state.ts` (deferred mount-restore to avoid
+  an SSR/CSR **hydration mismatch** — do NOT read localStorage in `useState` init; skip the first persist
+  so the default can't clobber a saved value). Make pagination **controlled** (`pagination` in `state` +
+  `onPaginationChange`). Persist `pageSize` but reset `pageIndex` to 0 on restore — a saved page can point
+  past the end once data/filters change. Keep `rowSelection` ephemeral (don't persist selections). Keys
+  are per-origin, so QA and prod remember separately.
+- **Tell / scope:** every per-page list table shares this pattern (each has its own copy of
+  `data-table.tsx`); most don't persist anything. The hook is reusable to fix the rest. Also note: a brief
+  pre-restore flash on return is expected (restore runs in a mount effect, by design).
+
 <!-- Add new entries above this line, newest-relevant first within each section.
      Create a new `## <area>` heading when a trap doesn't fit an existing one. -->
