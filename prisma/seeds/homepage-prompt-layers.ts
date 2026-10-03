@@ -100,8 +100,8 @@ const STYLES: Array<[string, string]> = [
     "Elegant high-contrast serif display (Playfair-style) title-case headlines, a tall condensed uppercase sans for hero labels, and a clean grotesk body; refined, lightly-rounded cards and buttons on a structured grid with a subtle geometric line texture; light warm base, one deep traditional brand primary, and a sparing metallic accent (eyebrows, hairlines, icons, photo frames); full-bleed full-color lifestyle photography with centered caps labels, image-led and aspirational; gentle motion — soft scroll reveals, hover lifts; warm, refined, established, trustworthy.",
   ],
   [
-    "Statement type / creative studio",
-    "Oversized wide heavy grotesk all-caps headlines with a loose brush-script accent word dropped in, over a clean geometric sans body; type-forward and expressive — huge overlapping type, confident negative space, minimal chrome; warm dark base (near-black), soft cream text, and a single vivid brand accent; full-bleed cinematic photography and autoplaying video (with a sound toggle), media-led and immersive; lively coordinated motion — scroll reveals, parallax, hover plays; bold, editorial, creative-studio swagger.",
+    "Statement type / bold editorial",
+    "Oversized heavy grotesk statement headlines (all-caps or tight sentence-case), optionally with a brush-script or highlighted accent word, over a clean geometric sans body with uppercase letter-spaced micro-labels; type- and copy-forward — huge type, confident negative space, minimal chrome; warm dark base (near-black), soft cream text, and a single vivid brand accent; full-bleed moody/cinematic photography or video, media-led and immersive, often with a persistent conversion bar; lively coordinated motion — scroll reveals, parallax, hover plays; bold, confident, editorial swagger.",
   ],
   [
     "Developer-tool / technical",
