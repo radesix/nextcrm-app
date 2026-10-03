@@ -3,7 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 /**
  * Starter library of homepage prompt LAYERS (spec Appendix A.2-A.4):
  *   - 1 HOMEPAGE_AVOID  (always applied),
- *   - 12 HOMEPAGE_STYLE (art-direction cards, stable-per-target pick),
+ *   - 13 HOMEPAGE_STYLE (art-direction cards, stable-per-target pick),
  *   - 15 HOMEPAGE_INDUSTRY (vertical cards; "Generic" is the default).
  * The refactored craft-only HOMEPAGE_BASE body lives in homepage-base-prompt.ts.
  *
@@ -16,7 +16,7 @@ import type { PrismaClient } from "@prisma/client";
  *
  * ID scheme (UUIDv4-shaped, last 12 hex digits carry the meaning):
  *   avoid    00000000-0000-4000-8000-0000000000a0
- *   style    00000000-0000-4000-8000-0000000057NN   (NN = 01..0c, spec order)
+ *   style    00000000-0000-4000-8000-0000000057NN   (NN = 01..0d, spec order)
  *   industry 00000000-0000-4000-8000-000000001dNN   (NN = 01..0f, spec order)
  * (HOMEPAGE_BASE keeps 00000000-0000-4000-8000-00000000ba5e.)
  *
@@ -98,6 +98,10 @@ const STYLES: Array<[string, string]> = [
   [
     "Heritage / aspirational serif",
     "Elegant high-contrast serif display (Playfair-style) title-case headlines, a tall condensed uppercase sans for hero labels, and a clean grotesk body; refined, lightly-rounded cards and buttons on a structured grid with a subtle geometric line texture; light warm base, one deep traditional brand primary, and a sparing metallic accent (eyebrows, hairlines, icons, photo frames); full-bleed full-color lifestyle photography with centered caps labels, image-led and aspirational; gentle motion — soft scroll reveals, hover lifts; warm, refined, established, trustworthy.",
+  ],
+  [
+    "Statement type / creative studio",
+    "Oversized wide heavy grotesk all-caps headlines with a loose brush-script accent word dropped in, over a clean geometric sans body; type-forward and expressive — huge overlapping type, confident negative space, minimal chrome; warm dark base (deep espresso/near-black), soft cream text, and a single hot brand accent; full-bleed cinematic photography and autoplaying video (with a sound toggle), media-led and immersive; lively coordinated motion — scroll reveals, parallax, hover plays; bold, editorial, creative-studio swagger.",
   ],
 ];
 
