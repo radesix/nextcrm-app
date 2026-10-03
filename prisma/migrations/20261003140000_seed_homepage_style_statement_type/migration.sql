@@ -6,7 +6,7 @@
 
 INSERT INTO "crm_Ai_Prompt" ("id", "name", "body", "kind", "scope", "is_default", "created_on")
 VALUES
-('00000000-0000-4000-8000-00000000570d', 'Statement type / creative studio', $body$Oversized wide heavy grotesk all-caps headlines with a loose brush-script accent word dropped in, over a clean geometric sans body; type-forward and expressive — huge overlapping type, confident negative space, minimal chrome; warm dark base (deep espresso/near-black), soft cream text, and a single hot brand accent; full-bleed cinematic photography and autoplaying video (with a sound toggle), media-led and immersive; lively coordinated motion — scroll reveals, parallax, hover plays; bold, editorial, creative-studio swagger.$body$, 'HOMEPAGE_STYLE', 'ORG', false, now())
+('00000000-0000-4000-8000-00000000570d', 'Statement type / creative studio', $body$Oversized wide heavy grotesk all-caps headlines with a loose brush-script accent word dropped in, over a clean geometric sans body; type-forward and expressive — huge overlapping type, confident negative space, minimal chrome; warm dark base (near-black), soft cream text, and a single vivid brand accent; full-bleed cinematic photography and autoplaying video (with a sound toggle), media-led and immersive; lively coordinated motion — scroll reveals, parallax, hover plays; bold, editorial, creative-studio swagger.$body$, 'HOMEPAGE_STYLE', 'ORG', false, now())
 ON CONFLICT ("id") DO UPDATE SET
   "name" = EXCLUDED."name",
   "body" = EXCLUDED."body",

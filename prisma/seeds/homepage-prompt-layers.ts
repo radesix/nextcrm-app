@@ -101,7 +101,7 @@ const STYLES: Array<[string, string]> = [
   ],
   [
     "Statement type / creative studio",
-    "Oversized wide heavy grotesk all-caps headlines with a loose brush-script accent word dropped in, over a clean geometric sans body; type-forward and expressive — huge overlapping type, confident negative space, minimal chrome; warm dark base (deep espresso/near-black), soft cream text, and a single hot brand accent; full-bleed cinematic photography and autoplaying video (with a sound toggle), media-led and immersive; lively coordinated motion — scroll reveals, parallax, hover plays; bold, editorial, creative-studio swagger.",
+    "Oversized wide heavy grotesk all-caps headlines with a loose brush-script accent word dropped in, over a clean geometric sans body; type-forward and expressive — huge overlapping type, confident negative space, minimal chrome; warm dark base (near-black), soft cream text, and a single vivid brand accent; full-bleed cinematic photography and autoplaying video (with a sound toggle), media-led and immersive; lively coordinated motion — scroll reveals, parallax, hover plays; bold, editorial, creative-studio swagger.",
   ],
   [
     "Developer-tool / technical",
@@ -109,7 +109,7 @@ const STYLES: Array<[string, string]> = [
   ],
   [
     "Friendly product / warm SaaS",
-    "Characterful Title-Case display sans (PP-Frama-style) with playful inline touches — a swapped-in icon, a hand-drawn underline — over a clean grotesk body (Inter-style); warm cream/off-white base, near-ink text, and a single sunny brand accent used sparingly (buttons, underlines, highlights); generously rounded pill buttons and badges, soft white cards, dashed flow connectors and product-UI screenshots on a tidy grid; friendly micro-interactions, gentle scroll reveals; approachable, optimistic, human — complex-made-simple product marketing.",
+    "Characterful Title-Case display sans (PP-Frama-style) with playful inline touches — a swapped-in icon, a hand-drawn underline — over a clean grotesk body (Inter-style); warm cream/off-white base, near-ink text, and a single bright brand accent used sparingly (buttons, underlines, highlights); generously rounded pill buttons and badges, soft white cards, dashed flow connectors and product-UI screenshots on a tidy grid; friendly micro-interactions, gentle scroll reveals; approachable, optimistic, human — complex-made-simple product marketing.",
   ],
 ];
 
