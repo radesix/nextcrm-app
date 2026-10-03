@@ -1072,6 +1072,27 @@
 
 ## Email / campaign rendering
 
+### Outreach email shows the PRE-revert homepage (stable slug URL cached in place)
+
+- **Symptom:** revert a homepage to a previous version, then generate/send the outreach email — the
+  email's embedded screenshot and/or link still shows the **last-generated** design, not the reverted one.
+- **Cause:** the homepage is addressed by a **stable per-target slug** (`/p/<slug>` + `/p/<slug>/screenshot.png`,
+  `previewUrls()` in `inngest/functions/generate-homepage.ts`). Revert correctly re-renders the HTML +
+  screenshot and repoints `current_version_id`, but the **URL never changes between versions**, so caches
+  serve stale bytes: the public routes set `max-age=300, s-maxage=300, swr=600` (~15 min edge staleness,
+  `lib/homepage/serve.ts`), and **email-client image proxies (Gmail/Outlook) cache the stable screenshot
+  URL far longer — often indefinitely**. (Separately, the merge source blanks the homepage until
+  `status === "READY"`, so acting mid-revert yields an *empty* homepage, not a stale one.)
+- **Fix / rule:** **cache-bust by version** — stamp `?v=<current_version_id>` onto the homepage URL and
+  screenshot in the email merge source (`withVersionParam` in `lib/campaigns/compose-target-email.ts`), so
+  each published/reverted version is a distinct, cache-clean URL. Also **block compose/preview/send while a
+  homepage job is `RUNNING`** so an operator can't email mid-job. When content lives at a stable overwrite-in-place
+  URL, anything that embeds it in an email MUST carry a per-version cache-bust — email proxies make
+  shortening cache headers alone insufficient.
+- **Tell:** "email shows the old design after revert, but the drawer/preview shows the new one" ⇒ caching
+  on the stable slug URL, not a version-selection bug (the email never reads version HTML — only the slug URLs).
+
+
 ### AI/TipTap body markup can blow out the fixed email column (horizontal scroll)
 
 - **Symptom:** an outreach email renders fine on the first generate, then after an edit/regenerate it
