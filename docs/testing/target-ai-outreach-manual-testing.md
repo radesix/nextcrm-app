@@ -204,6 +204,30 @@ via the toolbar button and asserts it survives editing and reaches the send).
 2. **Verify:** a branded confirmation page shows, and the target is now do-not-email. Gmail/Apple
    Mail's built-in Unsubscribe (one-click) also works (POST).
 
+### 1m. Bounce — deactivates + suppresses the target; shown as a red "Bounced" pill
+
+**E2E:** unit only — webhook bounce handling + target deactivation/suppression are covered by
+`__tests__/campaigns/api/webhooks-resend.test.ts`; the engagement-column "Bounced" state and the
+"Status" faceted filter by
+`app/[locale]/(routes)/campaigns/targets/table-data/__tests__/engagement-options.test.ts` and
+`…/status-options.test.ts`. Live Resend `email.bounced` delivery is **manual on QA** (needs a real
+undeliverable address), recorded as an E2E known gap.
+
+1. Send an outreach (or campaign) email to an **undeliverable** address. Resend fires an
+   `email.bounced` webhook. **Verify:** the outreach-history row shows a **BOUNCED** badge (a campaign
+   send row shows **bounced**).
+2. **Target deactivated + suppressed.** **Verify:** the target's **Status** is now **Inactive**, and it
+   is excluded from future sends (the send path gates on `do_not_email`, which the bounce also sets —
+   see Lessons Learned; **Status alone does not suppress**). A `crm_AuditLog` "updated" entry is written
+   (actor = null, the webhook) recording the status/do_not_email change, so the deactivation is traceable.
+3. **Engagement column shows Bounced (red).** On the targets list (`/campaigns/targets`), **Verify:**
+   the **Engagement** column shows a red **Bounced** pill for that target. A bounce outranks any prior
+   open/click on the same (now-dead) address.
+4. **Status filter.** In the targets-list toolbar, open the **Status** faceted filter and select
+   **Inactive**. **Verify:** only inactive targets (including the bounced one) show; selecting
+   **Active** hides it; clearing shows all. Sorting by **Engagement** places Bounced at the bottom
+   (a dead end, below "Not sent").
+
 ## 2. AI prompt library — create, edit, delete
 
 **E2E:** `tests/e2e/target-ai-email.spec.ts` › `creates, edits and deletes a prompt`

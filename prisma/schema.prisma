@@ -2082,6 +2082,9 @@ enum crm_Target_Email_Status {
   DRAFT
   SENT
   FAILED
+  // Set by the Resend webhook on email.bounced — distinct from FAILED (a
+  // send-time failure). A bounce also deactivates + suppresses the target.
+  BOUNCED
 }
 
 enum crm_Homepage_Status {

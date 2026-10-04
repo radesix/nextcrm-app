@@ -47,6 +47,7 @@ export const AVOID_PROMPT: PromptLayerSeed = {
 - **Typography:** one giant gradient-filled headline word; letter-spacing cranked on everything; a single trendy font with no real hierarchy.
 - **Copy:** vague hype ("Elevate your experience," "Welcome to the future of…," "We're passionate about…"); emoji bullet lists; manufactured urgency.
 - **Structure:** a numbered "1–2–3 how it works" pill row as filler; a logo cloud of brands they don't have; sections padded with placeholder content.
+- **Credits:** do not copy any website-builder credits in the footer such as "Built by", "Designed by", "Website by", etc.
 Instead: commit to one clear concept, let whitespace and real content carry the page, make every element earn its place, and prefer an unexpected-but-appropriate layout over the safe template. Never fabricate content to fill a section — cut the section.`,
 };
 

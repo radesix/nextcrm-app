@@ -11,6 +11,13 @@ jest.mock("@/lib/prisma", () => ({
     crm_Target_Homepage: {
       findFirst: jest.fn(),
     },
+    crm_Targets: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    crm_AuditLog: {
+      create: jest.fn(),
+    },
   },
 }));
 
@@ -49,6 +56,11 @@ function webhookRequest(
 const clickedEvent = JSON.stringify({
   type: "email.clicked",
   data: { email_id: "re_abc123", created_at: "2026-09-28T00:00:00Z" },
+});
+
+const bouncedEvent = JSON.stringify({
+  type: "email.bounced",
+  data: { email_id: "re_abc123" },
 });
 
 // Resend's real payload carries BOTH a `message_id` (the RFC 5322 Message-ID
@@ -94,6 +106,58 @@ describe("Resend webhook — Svix signature verification", () => {
       where: { id: "send-1" },
       data: { clicked_at: expect.any(Date) },
     });
+  });
+
+  it("marks a campaign send bounced AND deactivates + suppresses + audits the target", async () => {
+    (prismadb.crm_campaign_sends.findFirst as jest.Mock).mockResolvedValue({
+      id: "send-1",
+      target_id: "t-1",
+      status: "delivered",
+    });
+    (prismadb.crm_Targets.findUnique as jest.Mock).mockResolvedValue({
+      status: true,
+      do_not_email: false,
+    });
+
+    const res = await POST(webhookRequest(bouncedEvent));
+
+    expect(res.status).toBe(200);
+    expect(prismadb.crm_campaign_sends.update).toHaveBeenCalledWith({
+      where: { id: "send-1" },
+      data: { status: "bounced", error_message: "Bounced" },
+    });
+    expect(prismadb.crm_Targets.update).toHaveBeenCalledWith({
+      where: { id: "t-1" },
+      data: { status: false, do_not_email: true, do_not_email_at: expect.any(Date) },
+    });
+    expect(prismadb.crm_AuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          entityType: "target",
+          entityId: "t-1",
+          action: "updated",
+          userId: undefined, // webhook actor — no CRM user
+        }),
+      }),
+    );
+  });
+
+  it("is idempotent — an already-suppressed target is not re-updated or re-audited", async () => {
+    (prismadb.crm_campaign_sends.findFirst as jest.Mock).mockResolvedValue({
+      id: "send-1",
+      target_id: "t-1",
+      status: "bounced",
+    });
+    (prismadb.crm_Targets.findUnique as jest.Mock).mockResolvedValue({
+      status: false,
+      do_not_email: true,
+    });
+
+    const res = await POST(webhookRequest(bouncedEvent));
+
+    expect(res.status).toBe(200);
+    expect(prismadb.crm_Targets.update).not.toHaveBeenCalled();
+    expect(prismadb.crm_AuditLog.create).not.toHaveBeenCalled();
   });
 
   it("sets opened_at only when currently null", async () => {
@@ -290,6 +354,32 @@ describe("Resend webhook — Svix signature verification", () => {
         where: { id: "te-1" },
         data: { opened_at: new Date(EVENT_TS) },
       });
+    });
+
+    it("marks a one-off outreach email BOUNCED AND deactivates + suppresses + audits the target", async () => {
+      (prismadb.crm_Target_Email.findFirst as jest.Mock).mockResolvedValue({
+        id: "te-1", targetId: "t-1", opened_at: null, clicked_at: null, homepage_clicked_at: null,
+      });
+      (prismadb.crm_Targets.findUnique as jest.Mock).mockResolvedValue({
+        status: true, do_not_email: false,
+      });
+      const res = await POST(webhookRequest(bouncedEvent));
+      expect(res.status).toBe(200);
+      expect(prismadb.crm_Target_Email.update).toHaveBeenCalledWith({
+        where: { id: "te-1" },
+        data: { status: "BOUNCED", error_message: "Bounced" },
+      });
+      expect(prismadb.crm_Targets.update).toHaveBeenCalledWith({
+        where: { id: "t-1" },
+        data: { status: false, do_not_email: true, do_not_email_at: expect.any(Date) },
+      });
+      expect(prismadb.crm_AuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            entityType: "target", entityId: "t-1", action: "updated",
+          }),
+        }),
+      );
     });
   });
 });

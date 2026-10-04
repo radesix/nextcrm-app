@@ -5,6 +5,7 @@ export const ENGAGEMENT_STATUS_OPTIONS = [
   { label: "Clicked", value: "CLICKED" },
   { label: "Opened", value: "OPENED" },
   { label: "Sent", value: "SENT" },
+  { label: "Bounced", value: "BOUNCED" },
   { label: "Not sent", value: "NONE" },
 ] as const;
 
@@ -25,6 +26,9 @@ const ENGAGEMENT_RANK: Record<EngagementStatus, number> = {
   OPENED: 2,
   SENT: 1,
   NONE: 0,
+  // A bounce is a dead end (bad address), so it sorts below "Not sent" — least
+  // worth pursuing — even though it OUTRANKS everything for DISPLAY precedence.
+  BOUNCED: -1,
 };
 
 export function engagementRank(value?: string | null): number {
@@ -33,7 +37,12 @@ export function engagementRank(value?: string | null): number {
 
 /**
  * Furthest engagement a target reached across ALL its outreach emails:
- * CLICKED (the homepage link specifically) > OPENED > SENT > NONE.
+ * BOUNCED > CLICKED (the homepage link specifically) > OPENED > SENT > NONE.
+ *
+ * BOUNCED is checked FIRST and wins outright: a bounce auto-deactivates and
+ * suppresses the target (status=false, do_not_email=true), so flagging the dead
+ * address is the most actionable signal — more than a necessarily stale prior
+ * open/click on that same (now unusable) address.
  *
  * A click/open implies the email was sent, so those outrank SENT. Only a
  * successful send (status "SENT") counts as SENT — a FAILED/DRAFT row alone is
@@ -49,13 +58,20 @@ export function targetEngagementStatus(
   emails: TargetEmailEngagement[] | null | undefined,
 ): EngagementStatus {
   if (!emails || emails.length === 0) return "NONE";
+  let sawBounced = false;
+  let sawClicked = false;
   let sawOpened = false;
   let sawSent = false;
   for (const e of emails) {
-    if (e.homepage_clicked_at) return "CLICKED"; // highest — can't be beaten
+    if (e.status === "BOUNCED") sawBounced = true;
+    if (e.homepage_clicked_at) sawClicked = true;
     if (e.opened_at) sawOpened = true;
     if (e.status === "SENT") sawSent = true;
   }
+  // Precedence (full scan first, so order-independent): a bounce wins outright
+  // (see JSDoc), then homepage click > open > successful send > nothing.
+  if (sawBounced) return "BOUNCED";
+  if (sawClicked) return "CLICKED";
   if (sawOpened) return "OPENED";
   if (sawSent) return "SENT";
   return "NONE";
@@ -68,11 +84,13 @@ export function engagementStatusLabel(value?: string | null): string {
 }
 
 // Badge variant per engagement status. `default` = CLICKED (highlighted),
-// `secondary` = OPENED, `outline` = SENT. NONE renders as a muted dash, not a badge.
+// `secondary` = OPENED, `destructive` (red) = BOUNCED, `outline` = SENT. NONE
+// renders as a muted dash, not a badge.
 export function engagementBadgeVariant(
   value?: string | null,
-): "default" | "secondary" | "outline" {
+): "default" | "secondary" | "destructive" | "outline" {
   if (value === "CLICKED") return "default";
   if (value === "OPENED") return "secondary";
+  if (value === "BOUNCED") return "destructive";
   return "outline";
 }

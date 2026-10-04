@@ -58,6 +58,8 @@ describe("seedHomepagePromptLayers", () => {
   it("carries spec Appendix A bodies verbatim (spot checks)", () => {
     expect(AVOID_PROMPT.body).toContain("glassmorphism (frosted translucent panels)");
     expect(AVOID_PROMPT.body).toContain("Never fabricate content to fill a section");
+    // No website-builder credits in the footer ("Built by", "Designed by", ...).
+    expect(AVOID_PROMPT.body).toContain("website-builder credits in the footer");
     expect(STYLE_PROMPTS[0].name).toBe("Editorial / magazine");
     expect(STYLE_PROMPTS[0].body).toContain("High-contrast serif display");
     expect(INDUSTRY_PROMPTS[0].body).toContain("service-area map");
