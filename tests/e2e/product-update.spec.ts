@@ -17,7 +17,33 @@ async function selectFormOption(page: Page, fieldLabel: string, optionName: stri
   await page.getByRole("option", { name: optionName }).click();
 }
 
+async function createDisposableProduct(page: Page, name: string) {
+  await page.goto("/en/crm/products");
+  await page.waitForLoadState("networkidle", { timeout: 15000 });
+
+  await page.locator('button:has-text("+")').click();
+  await waitForSheet(page);
+
+  const dialog = page.locator('[role="dialog"][data-state="open"]');
+
+  await dialog.locator(".space-y-2").filter({ hasText: "Name" }).locator("input").fill(name);
+  await selectFormOption(page, "Type", "Product");
+  await dialog.locator(".space-y-2").filter({ hasText: "Unit Price" }).locator("input").fill("1.00");
+  await selectFormOption(page, "Currency", /USD/);
+
+  await dialog.locator('[type="submit"]').click();
+
+  await assertSuccessToast(page);
+  await expect(page.locator('[role="dialog"][data-state="open"]')).not.toBeVisible({ timeout: 8000 });
+  await expect(page.getByText(name).first()).toBeVisible({ timeout: 8000 });
+}
+
 async function openUpdateSheetViaRowAction(page: Page) {
+  // Shard-safety: products are NOT seeded, and under CI sharding another spec's
+  // data (e.g. product-create) may run on a different shard's DB — so guarantee
+  // at least one product exists here before relying on a product row.
+  await createDisposableProduct(page, `PW Update Seed ${Date.now()}`);
+
   await page.goto("/en/crm/products");
   await page.waitForLoadState("networkidle", { timeout: 15000 });
 

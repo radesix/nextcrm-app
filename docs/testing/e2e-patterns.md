@@ -689,6 +689,20 @@ Local runs are unaffected — you still run the whole suite in one process
 `LESSONS_LEARNED.md` entries under **Testing** for the rationale and the merge-job
 mechanics (`merge-reports`, `blob-report-*`, the `!cancelled()` gate).
 
+**Worked example (the first real instance).** `product-update.spec.ts` and
+`product-read.spec.ts` navigated to `/en/crm/products` and asserted a product
+row/link existed — but **products are not seeded**, and the only spec that creates
+them is `product-create.spec.ts`. Serially (one DB, alphabetical order) create ran
+first and left products behind; under sharding, update/read landed on a shard
+without that data and failed `expect(firstRow).toBeVisible()`. Fix: each
+row-dependent test creates its own product first via the `createDisposableProduct`
+UI helper (the same one `product-delete.spec.ts` already uses). Rule of thumb for
+*which* entities you can assume: only the **seeded** ones exist on every shard —
+users, one account/contact/lead/opportunity, the demo targets, and the lookup/config
+tables (`prisma/seeds/seed.ts`, gated on CI). Products, campaigns, target lists,
+documents, contracts, boards/tasks, invoices are **not** seeded — a spec needing one
+must create it.
+
 ---
 
 ## Deployed QA environment (Vercel's Preview scope)
