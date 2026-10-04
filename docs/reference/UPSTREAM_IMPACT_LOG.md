@@ -847,3 +847,23 @@ config workers).
 runs `playwright test ... --shard --reporter=blob`; the `e2e-report` job still merges `blob-report-*`
 into one `playwright-report`; then a green sharded E2E run on a code PR (confirm all 3 shards + the merge
 job pass and the merged report artifact appears).
+
+---
+
+## fix/e2e-shard-safety — self-seed products in two shard-unsafe E2E specs  (PR: TBD)
+
+Fallout from sharding (#46): `product-update.spec.ts` and `product-read.spec.ts` assumed a
+product row already existed (products are not seeded; they relied on `product-create.spec.ts`
+running first in a shared DB). Under sharding those specs can land on a shard without that
+data and fail. Both files were **identical to upstream** before this change (verified
+`git diff upstream/main:<f> main:<f>` = empty), so this is their **first** fork divergence,
+and it is **insert-only**. **2 upstream-owned files** touched.
+
+| Upstream file | +/− | Insert-only? | What / where | Risk |
+|---|---|---|---|---|
+| `tests/e2e/product-update.spec.ts` | +26/−0 | **insert-only** | Added the `createDisposableProduct` helper (its 3 deps already present) and one call at the top of `openUpdateSheetViaRowAction`. No existing line changed. | Low (on conflict re-add the helper + the create call) |
+| `tests/e2e/product-read.spec.ts` | +47/−1 | **mixed (near-insert)** | Added `Page` to the import (the −1), plus 4 helper fns and a `createDisposableProduct` call at the start of the two detail-navigation tests. Table/filter tests untouched. | Low (on conflict re-add the helpers + the 2 create calls) |
+
+**Re-verify after any upstream merge:** both specs still create their own product before any
+product-row/detail assertion; then a green sharded E2E run where `product-update`/`product-read`
+land on a shard that lacks `product-create` (i.e. any normal sharded run).
