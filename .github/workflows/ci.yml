@@ -85,7 +85,12 @@ jobs:
           # code and triggers the heavy jobs. prisma/**, package.json, lockfile,
           # app/config code are deliberately NOT in this skip list.
           code_files="$(grep -vE '^(docs/|\.github/|\.claude/|scripts/|.*\.md$|CLAUDE\.md$|AGENTS\.md$|CUSTOMIZATIONS\.md$|vercel\.json$|\.gitignore$|\.editorconfig$|\.prettier|LICENSE$)' <<< "$changed" || true)"
-          if [ -n "$code_files" ]; then code=true; else code=false; fi
+          # Self-validation carve-out: a change to THIS workflow (which defines the
+          # heavy jobs) must RUN them, or an edit to the integration/build/e2e jobs
+          # can never be exercised by its own PR (`.github/` is skipped above). The
+          # rest of `.github/` (other workflows, templates) stays skipped.
+          ci_self="$(grep -xE '\.github/workflows/ci\.yml' <<< "$changed" || true)"
+          if [ -n "$code_files" ] || [ -n "$ci_self" ]; then code=true; else code=false; fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "Heavy jobs (integration/build/e2e) will run: $code"
 

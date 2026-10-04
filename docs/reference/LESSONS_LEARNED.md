@@ -182,6 +182,26 @@
   call it out in the PR description. Treat "new env var" as a deploy-affecting change,
   not a code-only one.
 
+### A CI change can't validate itself when the heavy jobs path-skip `.github/`
+
+- **Symptom:** a change to the CI workflow (e.g. adding E2E sharding) merges "green",
+  but the jobs it changed **never actually ran** — the run finishes in ~1.5 min with
+  every heavy job (integration/build/e2e) showing a grey **skipped** circle, and a
+  matrix job's name still shows the unexpanded `${{ matrix.* }}` literal.
+- **Cause:** the `changes` job classifies a diff as "code" only when it touches files
+  outside a skip list that includes `^\.github/`. A PR that edits only
+  `.github/workflows/ci.yml` (+ docs) is therefore `code=false`, so the integration/
+  build/e2e jobs are skipped. Skipped ≠ failed, so the run is green and merge isn't
+  blocked — the change ships unexercised. "This PR is the test" is false here.
+- **Fix / rule:** give the workflow a **self-validation carve-out** — if
+  `.github/workflows/ci.yml` (the file that *defines* the heavy jobs) is in the diff,
+  force `code=true` so those jobs run. Keep the rest of `.github/` skipped. Use an
+  exact-line match (`grep -xE '\.github/workflows/ci\.yml'`) so `ci.yml.bak` etc. don't
+  trip it. More generally: before trusting a green CI run as proof of a change, confirm
+  the relevant jobs **ran** (expanded, non-skipped), not merely that nothing failed.
+- **Tell:** a CI-config PR that goes green suspiciously fast, with heavy jobs skipped
+  and no expanded matrix rows (1/3, 2/3, 3/3).
+
 ## Database / migrations
 
 ### An uncapped `pg` pool exhausts the session-mode pooler → *every* page 500s
