@@ -847,3 +847,21 @@ config workers).
 runs `playwright test ... --shard --reporter=blob`; the `e2e-report` job still merges `blob-report-*`
 into one `playwright-report`; then a green sharded E2E run on a code PR (confirm all 3 shards + the merge
 job pass and the merged report artifact appears).
+
+---
+
+## fix/ci-self-validate — run the heavy jobs when ci.yml itself changes  (PR: TBD)
+
+Follow-up to `perf/e2e-playwright-sharding`: that change merged green having never run a
+single shard, because the `changes` job path-skips `^\.github/` → `code=false` → the
+integration/build/e2e jobs (the very ones being changed) were skipped. Adds a
+self-validation carve-out so a change to `.github/workflows/ci.yml` forces `code=true`.
+**1 upstream-owned file** touched (the same `changes` job).
+
+| Upstream file | +/− | Insert-only? | What / where | Risk |
+|---|---|---|---|---|
+| `.github/workflows/ci.yml` | +6/−1 | **mixed** | insert: a `ci_self` grep (`grep -xE '\.github/workflows/ci\.yml'`) + 4 comment lines in the `changes` job. rewrite: the `if [ -n "$code_files" ]` line gains `|| [ -n "$ci_self" ]`. Nothing else in the job or workflow changed. | Low (fork owns this CI; on conflict keep the `ci_self` carve-out) |
+
+**Re-verify after any upstream merge:** the `changes` job still computes `ci_self` and
+ORs it into the `code` decision; then a PR that edits only `ci.yml` (+docs) still expands
+the e2e matrix to 3 shards + the merge job (not skipped). This PR is itself that check.
