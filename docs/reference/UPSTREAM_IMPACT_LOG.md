@@ -885,3 +885,21 @@ self-validation carve-out so a change to `.github/workflows/ci.yml` forces `code
 **Re-verify after any upstream merge:** the `changes` job still computes `ci_self` and
 ORs it into the `code` decision; then a PR that edits only `ci.yml` (+docs) still expands
 the e2e matrix to 3 shards + the merge job (not skipped). This PR is itself that check.
+
+---
+
+## feat/bounce-recording — record Resend bounces, deactivate + suppress the target  (PR: TBD)
+
+The Resend webhook now records `email.bounced` for one-off target outreach emails (previously
+dropped) and, on any bounce (campaign OR outreach), deactivates and suppresses the target
+(`status=false`, `do_not_email=true`). Adds a `BOUNCED` value to the `crm_Target_Email_Status`
+enum. **1 upstream-owned file** touched (`prisma/schema.prisma`); the webhook route, targets-table
+components, and the new `status-options.ts` are all fork-owned.
+
+| Upstream file | +/− | Insert-only? | What / where | Risk |
+|---|---|---|---|---|
+| `prisma/schema.prisma` | +4/−0 | **insert-only** | Added `BOUNCED` (+ a 2-line comment) to the fork-added `crm_Target_Email_Status` enum (`DRAFT/SENT/FAILED` → `+BOUNCED`). No existing line changed. Migration: `20261003190000_add_bounced_target_email_status` (`ALTER TYPE … ADD VALUE IF NOT EXISTS 'BOUNCED'`). | Very low (the enum is fork-added; on conflict re-add the value) |
+
+**Re-verify after any upstream merge:** `crm_Target_Email_Status` still contains `BOUNCED`, and the
+webhook test suite (`__tests__/campaigns/api/webhooks-resend.test.ts`) stays green — a bounce marks
+the email `BOUNCED` and flips the target `status=false, do_not_email=true`.

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prismadb } from "@/lib/prisma";
+import { writeAuditLog, diffObjects } from "@/lib/audit-log";
 import { createHmac, timingSafeEqual } from "crypto";
 
 // Resend signs webhooks with Svix ("standard webhooks"). The signed content is
@@ -45,6 +46,40 @@ function linkTargetsHomepage(link: string | undefined, slug: string): boolean {
   } catch {
     return link.includes(`/p/${slug}`);
   }
+}
+
+// A bounce means the recipient address is undeliverable. Deactivate the target
+// (status=false → shown "Inactive" in the list) AND suppress it from all future
+// sends. The send path gates on `do_not_email` (NOT on `status`), so suppression
+// requires setting do_not_email — status alone would not stop a re-send.
+//
+// Idempotent: a repeat bounce webhook for an already-deactivated+suppressed target
+// (or a target that no longer exists) is a no-op — no redundant UPDATE, no duplicate
+// audit entry. Writes a `crm_AuditLog` "updated" entry (actor = null, the Resend
+// webhook) so an operator can see WHY the target went Inactive.
+async function markTargetBounced(targetId: string): Promise<void> {
+  const before = await prismadb.crm_Targets.findUnique({
+    where: { id: targetId },
+    select: { status: true, do_not_email: true },
+  });
+  if (!before) return; // target gone (shouldn't happen — ids come from matched rows)
+  if (before.status === false && before.do_not_email === true) return; // already handled
+
+  await prismadb.crm_Targets.update({
+    where: { id: targetId },
+    data: { status: false, do_not_email: true, do_not_email_at: new Date() },
+  });
+
+  await writeAuditLog({
+    entityType: "target",
+    entityId: targetId,
+    action: "updated",
+    userId: null, // the actor is the Resend bounce webhook, not a CRM user
+    changes: diffObjects(
+      { status: before.status, do_not_email: before.do_not_email },
+      { status: false, do_not_email: true },
+    ),
+  });
 }
 
 function timingSafeEqualStr(a: string, b: string): boolean {
@@ -142,7 +177,14 @@ export async function POST(req: NextRequest) {
       },
     });
     if (targetEmail) {
-      if (event.type === "email.opened" && !targetEmail.opened_at) {
+      if (event.type === "email.bounced") {
+        // Mark this outreach email BOUNCED, then deactivate + suppress the target.
+        await prismadb.crm_Target_Email.update({
+          where: { id: targetEmail.id },
+          data: { status: "BOUNCED", error_message: "Bounced" },
+        });
+        await markTargetBounced(targetEmail.targetId);
+      } else if (event.type === "email.opened" && !targetEmail.opened_at) {
         await prismadb.crm_Target_Email.update({
           where: { id: targetEmail.id },
           data: { opened_at: eventAt },
@@ -196,6 +238,9 @@ export async function POST(req: NextRequest) {
         where: { id: send.id },
         data: { status: "bounced", error_message: "Bounced" },
       });
+      // A bad address is a bad address regardless of how it was sent — deactivate
+      // and suppress the target, same as a one-off outreach bounce below.
+      await markTargetBounced(send.target_id);
       break;
 
     case "email.opened":

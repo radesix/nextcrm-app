@@ -22,6 +22,7 @@ import {
   targetHomepagePresence,
   targetHomepageUrl,
 } from "../table-data/homepage-options";
+import { matchesStatusFilter } from "../table-data/status-options";
 import { Globe } from "lucide-react";
 import {
   targetTypeLabel,
@@ -219,6 +220,9 @@ export const columns: ColumnDef<Target>[] = [
     cell: ({ row }) => (
       <div className="">{row.original.status ? "Active" : "Inactive"}</div>
     ),
+    // Faceted filter values are "true"/"false" strings; the row value is a boolean.
+    filterFn: (row, id, value) =>
+      matchesStatusFilter(row.getValue(id) as boolean, value as string[]),
     enableSorting: true,
     enableHiding: true,
   },

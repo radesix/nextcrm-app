@@ -1223,3 +1223,28 @@
   for a replaced slot (per the refine-prompt instruction); reused tokens keep the old image.
 
 ## Email / campaign rendering
+
+### A target's `status` Boolean does NOT suppress sending — `do_not_email` does
+
+- **Symptom:** you mark a target "Inactive" (`crm_Targets.status = false`) expecting it to stop
+  receiving email, but it still gets campaign and one-off outreach sends.
+- **Cause:** the send paths gate exclusively on `do_not_email`. The campaign recipient filter
+  (`lib/campaigns/recipient-filters.ts`) and the global suppression check both key off
+  `do_not_email: false`; **nothing in the send path reads `status`**. `status` is a UI/reporting flag
+  (shown as "Active"/"Inactive" in the targets list), not a suppression gate.
+- **Fix / rule:** when something should actually stop future email (e.g. a Resend `email.bounced`
+  webhook, see `app/api/campaigns/webhooks/resend/route.ts` → `markTargetBounced`), set **both**
+  `status = false` (for the list/report) **and** `do_not_email = true` (+ `do_not_email_at`) — the
+  latter is what the send path honours. Setting `status` alone is cosmetic.
+
+### Resend bounce webhook only recorded campaign sends, silently dropped one-off outreach bounces
+
+- **Symptom:** a bounced one-off target email (the "email this target" flow, `crm_Target_Email`) left
+  no trace — the row stayed `SENT` and the target looked fine.
+- **Cause:** the webhook's target-email fork (the `if (!send)` branch) handled only `email.opened` /
+  `email.clicked`; there was no `email.bounced` case and the model had no bounce state (enum was
+  `DRAFT/SENT/FAILED`). Campaign sends already handled bounces; outreach emails did not.
+- **Fix / rule:** added a `BOUNCED` enum value and an `email.bounced` branch to the fork that marks the
+  email `BOUNCED` and calls the shared `markTargetBounced`. When adding a new Resend event type, wire it
+  into **both** branches (campaign send AND the one-off target-email fork) — they are separate code
+  paths that must stay in parity.

@@ -11,6 +11,7 @@ import { TARGET_TYPE_OPTIONS } from "@/lib/crm/target-type";
 import { TRIAGE_STATUS_OPTIONS } from "../table-data/triage-options";
 import { ENGAGEMENT_STATUS_OPTIONS } from "../table-data/engagement-options";
 import { HOMEPAGE_PRESENCE_OPTIONS } from "../table-data/homepage-options";
+import { STATUS_OPTIONS } from "../table-data/status-options";
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
@@ -54,6 +55,13 @@ export function DataTableToolbar<TData>({
           }
           className="h-8 w-[150px] lg:w-[250px]"
         />
+        {table.getColumn("status") && (
+          <DataTableFacetedFilter
+            column={table.getColumn("status")}
+            title="Status"
+            options={STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+          />
+        )}
         {table.getColumn("triage_status") && (
           <DataTableFacetedFilter
             column={table.getColumn("triage_status")}

@@ -84,7 +84,10 @@ app/api/campaigns/webhooks/resend/route.ts   (upstream, fork-extended) Svix-veri
                                         Matches events by data.email_id (NOT the RFC data.message_id
                                         header) and records the event's own timestamp; sets
                                         crm_Target_Email.opened_at/clicked_at, and homepage_clicked_at
-                                        when data.click.link is this email's /p/<slug>
+                                        when data.click.link is this email's /p/<slug>. On
+                                        email.bounced (campaign send OR one-off outreach) marks the
+                                        row bounced/BOUNCED and markTargetBounced() flips the target
+                                        status=false + do_not_email=true (suppression gate)
 actions/crm/targets/list-target-emails.ts   outreach history (+ homepage_clicked_at); feeds the
                                         Outreach card and the homepage engagement line
 .../components/HomepageEngagement.tsx   "Email — opened <date> · homepage link clicked <date>" line
@@ -95,6 +98,9 @@ lib/homepage/views.ts                   (extended) hasCrmSessionCookie() — rec
 prisma/migrations/20260929120000_target_ai_outreach/   crm_Ai_Prompt, crm_Target_Email,
                                         crm_Target_Homepage (+ enums)
 prisma/migrations/20261002120000_add_target_email_homepage_clicked_at/   crm_Target_Email.homepage_clicked_at
+prisma/migrations/20261003190000_add_bounced_target_email_status/   crm_Target_Email_Status += BOUNCED
+.../targets/table-data/status-options.ts   Active/Inactive faceted-filter options + match helper
+                                        (engagement-options.ts extended with the red BOUNCED pill)
 tests/e2e/target-ai-email.spec.ts       happy path + prompt library; mocks Anthropic/Resend
                                         with a local server (see e2e-commands.md)
 ```
