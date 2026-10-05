@@ -1248,3 +1248,26 @@
   email `BOUNCED` and calls the shared `markTargetBounced`. When adding a new Resend event type, wire it
   into **both** branches (campaign send AND the one-off target-email fork) — they are separate code
   paths that must stay in parity.
+
+### The fork's Actions GITHUB_TOKEN cannot create issues — don't build CI reporting on `gh issue`
+
+- **Symptom:** the `upstream-drift.yml` workflow went red the first week it actually detected drift
+  (`This fork is behind upstream/main by 35 commit(s).` then `##[error]Process completed with exit
+  code 1`). Earlier weeks were green only because the fork was 0 behind and the script `exit 0`'d
+  before reaching the issue step. First the error was `could not add label: 'upstream-sync' not found`;
+  after decoupling the label it became the real one: `GraphQL: Resource not accessible by integration
+  (createIssue)`.
+- **Cause:** `radesix/nextcrm-app` is a **public fork** (`gh repo view --json isFork` → `true`). On a
+  fork, GitHub withholds issue-write from the automatic `GITHUB_TOKEN` **regardless** of the workflow's
+  `permissions: issues: write` block (the run log even prints `Issues: write`) **and** regardless of the
+  repo's default Actions permission (`gh api repos/<r>/actions/permissions/workflow` — we flipped it
+  `read` → `write` and `createIssue` was still refused). The original `could not add label` error was a
+  red herring: `gh issue create --label X` resolves the label *before* the create mutation, so under
+  `set -euo pipefail` it died at label lookup and we never reached `createIssue` to see the real block.
+  The leading `gh label create ... 2>/dev/null || true` masked its own failure.
+- **Fix / rule:** **don't report CI state from a fork via `gh issue`/`gh label`** — the auto token
+  can't. Either (a) write the report to `$GITHUB_STEP_SUMMARY` and `exit 1` so the scheduled failure
+  email is the reminder (what `upstream-drift.yml` now does — needs only `contents: read`, no secret),
+  or (b) use a PAT secret with `issues: write` for the issue step. Debugging rule: a masked
+  (`2>/dev/null`) best-effort call that gates a later step can hide the true error for two layers — when
+  a CI step fails mysteriously, temporarily unmask the suppressed commands to see the first real error.
