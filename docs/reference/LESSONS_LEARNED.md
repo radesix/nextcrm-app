@@ -1222,6 +1222,38 @@
   code-owned `planHomepageImages` prompts. Backend-only caveat: it relies on the model emitting a new token
   for a replaced slot (per the refine-prompt instruction); reused tokens keep the old image.
 
+### Generated site shows a broken logo image (`<img src="">`) — harvest picked the wrong element
+
+- **Symptom:** a recently generated homepage shows a broken/missing logo image, even though the prospect's
+  real site clearly has a logo. Earlier sites looked fine; it became hit-or-miss (~half) across a batch.
+- **Causes (two, compounding):**
+  1. **Harvest grabbed the wrong image.** `extractBrand` used a single first-match
+     `document.querySelector("header img, nav img, [class*='logo'] img, ...")`. `querySelector` with a
+     comma-list returns the element earliest in **document order** that matches **any** selector — so on a
+     site whose header renders an accessibility widget / cookie bar / decorative icon before the logo, the
+     first `header img` was that junk icon, not the logo (real example: Salon Halo's "contrast" toggle
+     `setting-icon.png`, `alt="normal Contrast"`). The real logo was never reached.
+  2. **The junk was then rejected by a strict content-type check** (`ct.startsWith("image/")`). CDNs routinely
+     serve logos as `application/octet-stream` (Salon Halo did), so even when a real logo *was* selected it
+     could be dropped → `logo_data_uri` null. A null logo then became `<img src="">` because `materialize`
+     substituted the `__RADE_LOGO_SRC__` token with `""` (the model still emits the token — the code-owned
+     `MACHINE_CONTRACT` documents it every run), and `<img src="">` resolves to the page URL = broken image.
+- **Fix / rules:**
+  - **Rank logo candidates; never take the first header `<img>`.** Pure, unit-tested `pickLogoCandidates`
+    (`lib/homepage/logo-pick.ts`) scores every `<img>` (prefer `logo`/`wordmark` in filename/alt/class/id and
+    `.logo`/`[id*=logo]` ancestors; penalize accessibility/icon/social/spacer junk and tiny images), then
+    appends favicon/apple-touch-icon fallbacks (largest first). `extractBrand` now returns plain descriptors
+    for ALL imgs + icon links; ranking + byte checks run in Node (keeps the in-page scrape dumb + testable).
+  - **Sniff image magic bytes; don't trust (or solely require) the content-type.** `buildLogoDataUri` accepts
+    `application/octet-stream` when the bytes sniff as an image, still accepts a genuine `image/*` header
+    (so AVIF/BMP aren't lost) unless the bytes look like an HTML error page, and `harvestSource` tries
+    candidates best-first, taking the first that yields real image bytes.
+  - **Never serve a broken logo.** `materialize` (now the pure `lib/homepage/materialize.ts`) STRIPS the whole
+    logo `<img>` when `logo_data_uri` is null (mirroring the orphan image-token cleanup), instead of blanking
+    its `src`. Defense-in-depth: even a future harvest miss renders a clean text wordmark, never `<img src="">`.
+  - **General trap:** a comma-separated `querySelector` is document-order-first, not selector-priority-first —
+    when you need "the best match", collect all and rank; don't rely on selector order.
+
 ## Email / campaign rendering
 
 ### A target's `status` Boolean does NOT suppress sending — `do_not_email` does
