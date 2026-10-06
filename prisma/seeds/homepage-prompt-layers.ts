@@ -3,7 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 /**
  * Starter library of homepage prompt LAYERS (spec Appendix A.2-A.4):
  *   - 1 HOMEPAGE_AVOID  (always applied),
- *   - 15 HOMEPAGE_STYLE (art-direction cards, stable-per-target pick),
+ *   - 16 HOMEPAGE_STYLE (art-direction cards, stable-per-target pick),
  *   - 15 HOMEPAGE_INDUSTRY (vertical cards; "Generic" is the default).
  * The refactored craft-only HOMEPAGE_BASE body lives in homepage-base-prompt.ts.
  *
@@ -111,6 +111,10 @@ const STYLES: Array<[string, string]> = [
   [
     "Friendly product / warm SaaS",
     "Characterful Title-Case display sans (PP-Frama-style) with playful inline touches — a swapped-in icon, a hand-drawn underline — over a clean grotesk body (Inter-style); warm cream/off-white base, near-ink text, and a single bright brand accent used sparingly (buttons, underlines, highlights); generously rounded pill buttons and badges, soft white cards, dashed flow connectors and product-UI screenshots on a tidy grid; friendly micro-interactions, gentle scroll reveals; approachable, optimistic, human — complex-made-simple product marketing.",
+  ],
+  [
+    "Studio editorial / quiet-luxury",
+    "Oversized heavy grotesque sentence-case statement headlines anchored low, paired with a high-contrast editorial serif (Didone-style) for award lines and pull-quotes and an uppercase letter-spaced label for eyebrows and numbered section tags; strictly monochrome — warm near-black and a bone/off-white, with NO loud accent (color comes from photography alone); a coherent kit of rounded \"instrument\" pills (a live clock, numbered section tags, carousel arrows, date badges) layered over hard editorial type on a disciplined two-column grid (a giant statement left, a tight supporting paragraph right) with generous negative space; full-bleed cinematic interior/lifestyle photography and ambient muted-loop video, media-led and immersive; scroll-led storytelling — a pinned headline that reveals its body, dark↔cream section swaps, and a horizontal case-study slider with overlaid pull-quotes and ghosted project names; refined human touches (a handwritten signature, a scroll-distance easter egg); calm, premium, confident — quiet-luxury studio craft.",
   ],
 ];
 
