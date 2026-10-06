@@ -1303,3 +1303,22 @@
   or (b) use a PAT secret with `issues: write` for the issue step. Debugging rule: a masked
   (`2>/dev/null`) best-effort call that gates a later step can hide the true error for two layers — when
   a CI step fails mysteriously, temporarily unmask the suppressed commands to see the first real error.
+
+### Harvested brand colors silently dropped — `getComputedStyle` returns oklch()/lab(), a hex-only filter discarded them
+
+- **Symptom:** generated homepages ignored the prospect's brand colors in the imagery — every page's
+  photos came out the same warm "Architectural Digest" tone regardless of the brand, and (combined
+  with a monochrome style) looked uniformly brown. The page CSS sometimes picked up brand color; the
+  images never did.
+- **Cause:** `harvestSource` reads brand colors via `getComputedStyle`, which on modern sites
+  (**Tailwind v4 defaults to `oklch()`**, and some serialize `lab()`/`color()`) returns non-hex color
+  strings. The image planner's `validatedColors` (`lib/homepage/images/plan.ts`) keeps **only hex**, so
+  every harvested color was filtered out and the image prompt's palette clause was always empty — the
+  fixed warm scaffold then dominated. Hex-only validators are a trap now that computed colors are
+  rarely `rgb()`.
+- **Fix / rule:** normalize harvested colors to `#rrggbb` at the source (`lib/homepage/color.ts`
+  `normalizeColorsToHex`, wired into `harvestSource`) so brand colors survive to BOTH the image palette
+  and the prompt brief; cap to the few most-dominant to avoid a muddy palette. Also made the brand
+  palette **authoritative** in `MACHINE_CONTRACT` (code-owned, always last) so it wins over a style's
+  fixed/monochrome palette without an operator override. Rule: when consuming `getComputedStyle`
+  colors, expect `oklch()`/`lab()`/`color()`, not just `rgb()` — convert before any hex-only check.
