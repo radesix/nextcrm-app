@@ -112,16 +112,18 @@ export function sniffImageMime(bytes: Uint8Array): string | null {
     b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50
   )
     return "image/webp";
-  // SVG: leading (whitespace/BOM then) "<svg" or an XML prolog that contains "<svg".
-  const head = new TextDecoder("utf-8", { fatal: false }).decode(b.subarray(0, 256)).trimStart();
-  if (/^<svg[\s>]/i.test(head) || (/^<\?xml/i.test(head) && /<svg[\s>]/i.test(head))) return "image/svg+xml";
+  // SVG: leading "<svg", or an XML prolog / SVG DOCTYPE that is followed by "<svg".
+  const head = new TextDecoder("utf-8", { fatal: false }).decode(b.subarray(0, 512)).trimStart();
+  if (/^<svg[\s/>]/i.test(head)) return "image/svg+xml";
+  if (/^<(\?xml|!doctype\s+svg)/i.test(head) && /<svg[\s/>]/i.test(head)) return "image/svg+xml";
   return null;
 }
 
 /** True when the leading bytes look like an HTML/error page rather than an image. */
 function looksLikeHtml(body: Uint8Array): boolean {
   const head = new TextDecoder("utf-8", { fatal: false }).decode(body.subarray(0, 256)).trimStart();
-  return /^<(!doctype|html\b|head\b|body\b|script\b)/i.test(head);
+  // Only an HTML doctype counts — "<!DOCTYPE svg …>" is a valid SVG, not HTML.
+  return /^<(!doctype\s+html|html\b|head\b|body\b|script\b)/i.test(head);
 }
 
 /**

@@ -23,9 +23,9 @@ export type HarvestResult = { screenshotB64: string; brand: SourceBrand };
 
 const NAV_TIMEOUT_MS = 15000;
 const MAX_COPY_CHARS = 2000;
-// Most candidates succeed on the first try; cap fetches so a site with many
-// header images can't stall the harvest.
-const MAX_LOGO_FETCH_ATTEMPTS = 5;
+// Most candidates succeed on the first try; cap fetches (each up to 10s) so a
+// site with many header images can't stall the harvest.
+const MAX_LOGO_FETCH_ATTEMPTS = 3;
 
 /** Parse to an http(s) URL, or null. `new URL` also normalises odd host encodings (decimal/hex IPs). */
 function parseHttpUrl(raw: string): URL | null {

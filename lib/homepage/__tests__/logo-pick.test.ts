@@ -67,6 +67,15 @@ describe("sniffImageMime", () => {
     expect(sniffImageMime(new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>'))).toBe("image/svg+xml");
     expect(sniffImageMime(new TextEncoder().encode('<?xml version="1.0"?><svg></svg>'))).toBe("image/svg+xml");
   });
+  it("detects a DOCTYPE-prefixed SVG (Illustrator/Inkscape exports)", () => {
+    expect(
+      sniffImageMime(
+        new TextEncoder().encode('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/svg.dtd"><svg></svg>'),
+      ),
+    ).toBe("image/svg+xml");
+  });
+  it("does not treat a DOCTYPE-svg as HTML (returns svg, not null)", () =>
+    expect(sniffImageMime(new TextEncoder().encode("<!doctype svg><svg/>"))).toBe("image/svg+xml"));
   it("returns null for non-image bytes", () => expect(sniffImageMime(u8(0x00, 0x01, 0x02, 0x03))).toBeNull());
   it("returns null for HTML", () => expect(sniffImageMime(new TextEncoder().encode("<!doctype html><html>"))).toBeNull());
 });
@@ -82,6 +91,10 @@ describe("buildLogoDataUri", () => {
   });
   it("ignores a bogus charset suffix on the content-type", () => {
     expect(buildLogoDataUri("image/svg+xml; charset=utf-8", Buffer.from("<svg></svg>"))).toMatch(/^data:image\/svg\+xml;base64,/);
+  });
+  it("accepts a DOCTYPE-prefixed SVG served as image/svg+xml (not misread as HTML)", () => {
+    const svg = Buffer.from('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/svg.dtd"><svg><rect/></svg>');
+    expect(buildLogoDataUri("image/svg+xml", svg)).toMatch(/^data:image\/svg\+xml;base64,/);
   });
   it("rejects a non-image response even with an image content-type lie", () => {
     expect(buildLogoDataUri("image/png", Buffer.from("<html>not an image</html>"))).toBeNull();
