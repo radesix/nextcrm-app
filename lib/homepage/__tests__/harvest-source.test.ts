@@ -25,7 +25,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   assertPublicHost.mockResolvedValue({ address: "93.184.216.34", hostname: "acme.example" });
   evaluate.mockResolvedValue({
-    logoUrl: "https://x/logo.png",
+    logoImgs: [{ url: "https://x/logo.png", alt: "Acme", inLogoCtx: true, inHeaderNav: true }],
+    iconLinks: [],
     colors: ["#123"],
     fonts: ["Inter"],
     copy: "We do plumbing",
@@ -77,7 +78,7 @@ describe("harvestSource", () => {
 
   it("runs the guard before launching or navigating", async () => {
     // No logo here so the (separate) logo-host guard call doesn't muddy the order.
-    evaluate.mockResolvedValue({ logoUrl: null, colors: [], fonts: [], copy: "x" });
+    evaluate.mockResolvedValue({ logoImgs: [], iconLinks: [], colors: [], fonts: [], copy: "x" });
     const order: string[] = [];
     assertPublicHost.mockImplementation(async () => {
       order.push("guard");
@@ -127,6 +128,35 @@ describe("harvestSource", () => {
     expect((await harvestSource("https://acme.example"))?.brand.logoDataUri).toBeNull();
   });
 
+  it("picks the real logo over a header accessibility icon and accepts a CDN octet-stream image (Salon Halo regression)", async () => {
+    // Reproduces the production failure: an accessibility 'contrast' widget icon
+    // sits before the logo in the header, and the CDN serves the logo as
+    // application/octet-stream. Old code grabbed the icon and rejected the
+    // octet-stream content-type, leaving the page with no logo.
+    evaluate.mockResolvedValue({
+      logoImgs: [
+        { url: "https://cdn/setting-icon.png", alt: "normal Contrast", cls: "img-w", inHeaderNav: true },
+        { url: "https://cdn/logo.png", alt: "SALON HALO", inLogoCtx: true, inHeaderNav: true },
+      ],
+      iconLinks: [],
+      colors: [],
+      fonts: [],
+      copy: "x",
+    });
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    logoGet.mockImplementation(async (url: string) =>
+      url === "https://cdn/logo.png"
+        ? { ok: () => true, headers: () => ({ "content-type": "application/octet-stream" }), body: async () => png }
+        : { ok: () => true, headers: () => ({ "content-type": "text/html" }), body: async () => Buffer.from("<html>") },
+    );
+    const out = await harvestSource("https://acme.example");
+    expect(out?.brand.logoUrl).toBe("https://cdn/logo.png");
+    expect(out?.brand.logoDataUri).toBe(`data:image/png;base64,${png.toString("base64")}`);
+    // the real logo is fetched first; the junk header icon is never fetched
+    expect(logoGet).toHaveBeenCalledWith("https://cdn/logo.png", expect.anything());
+    expect(logoGet).not.toHaveBeenCalledWith("https://cdn/setting-icon.png", expect.anything());
+  });
+
   it("harvests screenshot + brand for a safe url, with downloads disabled and a nav timeout", async () => {
     const out = await harvestSource("https://acme.example");
     expect(out?.brand.copy).toContain("plumbing");
@@ -141,7 +171,7 @@ describe("harvestSource", () => {
   });
 
   it("caps copy at 2000 chars", async () => {
-    evaluate.mockResolvedValue({ logoUrl: null, colors: [], fonts: [], copy: "a".repeat(5000) });
+    evaluate.mockResolvedValue({ logoImgs: [], iconLinks: [], colors: [], fonts: [], copy: "a".repeat(5000) });
     const out = await harvestSource("https://acme.example");
     expect(out?.brand.copy.length).toBe(2000);
   });

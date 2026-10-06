@@ -5,6 +5,7 @@ import { getApiKey } from "@/lib/api-keys";
 import { harvestSource, type HarvestResult } from "@/lib/homepage/harvest-source";
 import { generateHomepage as generateHomepageHtml } from "@/lib/homepage/provider";
 import { buildSystemPrompt, buildImageBrief } from "@/lib/homepage/prompt";
+import { materializeHtml, LOGO_PLACEHOLDER } from "@/lib/homepage/materialize";
 import { planHomepageImages, planRefineImage } from "@/lib/homepage/images/plan";
 import { resolveImageProviders, generateWithFallback } from "@/lib/homepage/images/resolve";
 import type { GeneratedImage } from "@/lib/homepage/images/types";
@@ -118,25 +119,14 @@ type HomepageRow = {
 // we swap in the harvested logo data: URI only at RENDER + UPLOAD time. Keeping
 // the placeholder in the persisted/prompt HTML keeps prompts small (the base64
 // never enters the model prompt or a step return) while the screenshot + served
-// page still show the real logo under the render egress block.
-const LOGO_PLACEHOLDER = "__RADE_LOGO_SRC__";
-
-/**
- * Swap the logo placeholder AND every generated-image token for its real value.
- * Tokens (`__RADE_IMG_N__`) stay in the persisted/prompt HTML — like the logo
- * placeholder — and are only substituted at RENDER + UPLOAD time.
- */
-function materialize(
+// page still show the real logo under the render egress block. Substitution
+// (incl. stripping the logo <img> when no logo was harvested) lives in the pure,
+// unit-tested materialize module.
+const materialize = (
   html: string,
   logoDataUri: string | null | undefined,
   images: GeneratedImage[],
-): string {
-  let out = html.split(LOGO_PLACEHOLDER).join(logoDataUri ?? "");
-  for (const img of images) out = out.split(img.token).join(img.url);
-  // A token the model invented with no generated image behind it must never be
-  // served as a literal broken <img src="__RADE_IMG_9__">.
-  return out.replace(/__RADE_IMG_\d+__/g, "");
-}
+): string => materializeHtml(html, logoDataUri, images);
 
 const IMAGE_TOKEN_RE = /__RADE_IMG_(\d+)__/g;
 

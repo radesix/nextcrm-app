@@ -1,6 +1,13 @@
 import type { Browser } from "playwright-core";
 import { assertPublicHost } from "@/lib/net/host-guard";
 import { launchBrowser } from "@/lib/homepage/render";
+import {
+  pickLogoCandidates,
+  buildLogoDataUri,
+  MAX_LOGO_BYTES,
+  type LogoImgCandidate,
+  type IconLinkCandidate,
+} from "@/lib/homepage/logo-pick";
 
 export type SourceBrand = {
   logoUrl: string | null;
@@ -16,8 +23,9 @@ export type HarvestResult = { screenshotB64: string; brand: SourceBrand };
 
 const NAV_TIMEOUT_MS = 15000;
 const MAX_COPY_CHARS = 2000;
-// Cap the inlined logo so it never bloats the stored HTML / screenshot payload.
-const MAX_LOGO_BYTES = 128 * 1024;
+// Most candidates succeed on the first try; cap fetches (each up to 10s) so a
+// site with many header images can't stall the harvest.
+const MAX_LOGO_FETCH_ATTEMPTS = 3;
 
 /** Parse to an http(s) URL, or null. `new URL` also normalises odd host encodings (decimal/hex IPs). */
 function parseHttpUrl(raw: string): URL | null {
@@ -43,10 +51,25 @@ async function hostIsPublic(host: string): Promise<boolean> {
   }
 }
 
+/** What `extractBrand` returns: logo candidates (ranked + fetched in Node) + brand context. */
+type RawBrand = {
+  logoImgs: LogoImgCandidate[];
+  iconLinks: IconLinkCandidate[];
+  colors: string[];
+  fonts: string[];
+  copy: string;
+};
+
 /**
  * Runs inside the page. Must be self-contained (serialised into the browser).
+ *
+ * Collects EVERY plausible logo `<img>` plus favicon/apple-touch links as plain
+ * descriptors; the ranking (prefer real logos over header accessibility/icon
+ * widgets) and the byte-level image check happen in Node (`logo-pick.ts`). The
+ * old single first-match selector grabbed whatever header image came first,
+ * which on many sites is a decorative/accessibility icon, not the logo.
  */
-function extractBrand(maxCopy: number): Omit<SourceBrand, "logoDataUri"> {
+function extractBrand(maxCopy: number): RawBrand {
   const abs = (href: string | null | undefined): string | null => {
     if (!href) return null;
     try {
@@ -56,12 +79,40 @@ function extractBrand(maxCopy: number): Omit<SourceBrand, "logoDataUri"> {
     }
   };
 
-  const logoImg =
-    document.querySelector<HTMLImageElement>(
-      "header img, nav img, [class*='logo' i] img, img[class*='logo' i], img[alt*='logo' i]",
-    ) ?? null;
-  const iconLink = document.querySelector<HTMLLinkElement>("link[rel~='icon'], link[rel='apple-touch-icon']");
-  const logoUrl = abs(logoImg?.currentSrc || logoImg?.src) ?? abs(iconLink?.href);
+  const logoImgs: LogoImgCandidate[] = [];
+  Array.from(document.querySelectorAll("img"))
+    .slice(0, 60)
+    .forEach((img) => {
+      const url = abs(img.currentSrc || img.getAttribute("src"));
+      if (!url) return;
+      let inLogoCtx = false;
+      let inHeaderNav = false;
+      let el: Element | null = img;
+      for (let i = 0; i < 6 && el; i++) {
+        el = el.parentElement;
+        if (!el) break;
+        if (el.tagName === "HEADER" || el.tagName === "NAV") inHeaderNav = true;
+        if (/logo|brand/i.test(`${el.className || ""} ${el.id || ""}`)) inLogoCtx = true;
+      }
+      const r = img.getBoundingClientRect();
+      logoImgs.push({
+        url,
+        alt: img.getAttribute("alt") || "",
+        cls: img.className || "",
+        id: img.id || "",
+        inLogoCtx,
+        inHeaderNav,
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+      });
+    });
+
+  const iconLinks: IconLinkCandidate[] = [];
+  document.querySelectorAll("link[rel~='icon'], link[rel='apple-touch-icon']").forEach((l) => {
+    const href = abs(l.getAttribute("href"));
+    if (!href) return;
+    iconLinks.push({ rel: l.getAttribute("rel") || "", href, sizes: l.getAttribute("sizes") || "" });
+  });
 
   const colorCounts = new Map<string, number>();
   const addColor = (c: string) => {
@@ -98,7 +149,7 @@ function extractBrand(maxCopy: number): Omit<SourceBrand, "logoDataUri"> {
   });
   const copy = parts.join("\n").slice(0, maxCopy);
 
-  return { logoUrl, colors, fonts, copy };
+  return { logoImgs, iconLinks, colors, fonts, copy };
 }
 
 /**
@@ -178,29 +229,46 @@ export async function harvestSource(url: string | null | undefined): Promise<Har
     // Fetch the logo bytes and inline them as a data: URI. The render step blocks
     // all network egress, so a remote <img src> would never load there (the
     // screenshot + vision critique would miss the logo); a data: URI renders.
-    // page.request bypasses page CORS, so re-validate the logo host with the SAME
-    // SSRF guard before fetching. Best-effort: any failure just yields no logo.
+    // Candidates are tried best-first (real logo ahead of header icons); the
+    // first that yields real image bytes wins. page.request bypasses page CORS,
+    // so re-validate EACH logo host with the SAME SSRF guard before fetching.
+    // Best-effort: any failure just moves to the next candidate / yields no logo.
+    const candidates = pickLogoCandidates(raw.logoImgs ?? [], raw.iconLinks ?? []);
     let logoDataUri: string | null = null;
-    const logoTarget = raw.logoUrl ? parseHttpUrl(raw.logoUrl) : null;
-    if (logoTarget && (await hostIsPublic(bareHost(logoTarget)))) {
+    let logoUrl: string | null = candidates[0] ?? null;
+    let attempts = 0;
+    for (const cand of candidates) {
+      if (attempts >= MAX_LOGO_FETCH_ATTEMPTS) break;
+      // A logo already inlined on the source page: use it directly (bounded size).
+      if (cand.startsWith("data:image/")) {
+        if (cand.length <= MAX_LOGO_BYTES * 2) {
+          logoDataUri = cand;
+          logoUrl = cand;
+          break;
+        }
+        continue;
+      }
+      const logoTarget = parseHttpUrl(cand);
+      if (!logoTarget || !(await hostIsPublic(bareHost(logoTarget)))) continue;
+      attempts += 1;
       try {
         const resp = await page.request.get(logoTarget.href, { timeout: 10000 });
-        const ct = resp.headers()["content-type"] || "";
-        if (resp.ok() && ct.startsWith("image/")) {
-          const body = await resp.body();
-          if (body.length > 0 && body.length <= MAX_LOGO_BYTES) {
-            logoDataUri = `data:${ct.split(";")[0]};base64,${body.toString("base64")}`;
-          }
+        if (!resp.ok()) continue;
+        const dataUri = buildLogoDataUri(resp.headers()["content-type"], await resp.body());
+        if (dataUri) {
+          logoDataUri = dataUri;
+          logoUrl = cand;
+          break;
         }
       } catch {
-        // best-effort; leave logoDataUri null
+        // best-effort; try the next candidate
       }
     }
 
     return {
       screenshotB64: Buffer.from(png).toString("base64"),
       brand: {
-        logoUrl: raw.logoUrl ?? null,
+        logoUrl,
         logoDataUri,
         colors: raw.colors ?? [],
         fonts: raw.fonts ?? [],
