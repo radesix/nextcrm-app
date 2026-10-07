@@ -8,6 +8,7 @@ import {
   type LogoImgCandidate,
   type IconLinkCandidate,
 } from "@/lib/homepage/logo-pick";
+import { normalizeColorsToHex } from "@/lib/homepage/color";
 
 export type SourceBrand = {
   logoUrl: string | null;
@@ -23,6 +24,9 @@ export type HarvestResult = { screenshotB64: string; brand: SourceBrand };
 
 const NAV_TIMEOUT_MS = 15000;
 const MAX_COPY_CHARS = 2000;
+// Keep only the few most-dominant brand colors (background, text, primary, accent)
+// so the authoritative brand palette doesn't muddy a style built around restraint.
+const MAX_BRAND_COLORS = 4;
 // Most candidates succeed on the first try; cap fetches (each up to 10s) so a
 // site with many header images can't stall the harvest.
 const MAX_LOGO_FETCH_ATTEMPTS = 3;
@@ -270,7 +274,12 @@ export async function harvestSource(url: string | null | undefined): Promise<Har
       brand: {
         logoUrl,
         logoDataUri,
-        colors: raw.colors ?? [],
+        // getComputedStyle serializes modern colors as oklch()/lab() (Tailwind v4
+        // default) or rgb(); normalize to hex so brand colors survive the image
+        // planner's hex-only validator AND read cleanly in the prompt brief.
+        // Capped to the few most-dominant (raw list is frequency-sorted) so a
+        // style isn't handed a muddy palette.
+        colors: normalizeColorsToHex(raw.colors ?? [], MAX_BRAND_COLORS),
         fonts: raw.fonts ?? [],
         copy: (raw.copy ?? "").slice(0, MAX_COPY_CHARS),
       },
