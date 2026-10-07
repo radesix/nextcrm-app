@@ -1303,3 +1303,19 @@
   or (b) use a PAT secret with `issues: write` for the issue step. Debugging rule: a masked
   (`2>/dev/null`) best-effort call that gates a later step can hide the true error for two layers — when
   a CI step fails mysteriously, temporarily unmask the suppressed commands to see the first real error.
+
+### A new homepage style/prompt layer never reaches QA/prod from the seed file alone — it needs a migration
+
+- **Symptom:** a 16th `HOMEPAGE_STYLE` ("Studio editorial / quiet-luxury") was added to
+  `prisma/seeds/homepage-prompt-layers.ts` and showed up locally, but was absent from the
+  production Prompt Library.
+- **Cause:** hosted environments receive these prompt rows **only via a Prisma migration** — the
+  Vercel build runs `prisma migrate deploy`, never the seed script. The seed array is local/dev
+  convenience. The original 15 styles each had a seed migration (`20261001130000` + the
+  `20261003*_seed_homepage_style_*` set); the 16th had none, so it never deployed.
+- **Fix / rule:** adding a style/industry/avoid layer is a **repeatable multi-step process**, now
+  documented at `docs/guides/process/ADDING_A_HOMEPAGE_STYLE.md` (and linked from the seed file
+  header + the CLAUDE.md reference table). The non-negotiable step: ship an additive
+  `…_seed_homepage_style_<slug>` migration whose `INSERT … ON CONFLICT (id) DO UPDATE` body
+  **matches the seed constant verbatim**, using the next fixed id (`…0057NN`, `NN` = hex of spec
+  order). Then DEV → QA (`advance-qa`) → verify → Promote to prod.

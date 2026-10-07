@@ -37,6 +37,7 @@ relevant one *before* doing the matching work.
 | `docs/guides/platform/SUPABASE_ON_VERCEL.md` | setting `DATABASE_URL`, choosing a pooler, or debugging a connection/pooler incident (`ENETUNREACH`, `EMAXCONNSESSION`, `57P01`). |
 | `docs/guides/platform/ISR_AND_CACHING.md` | adding a cache/Upstash call, marking a route `force-dynamic`/`force-static`, or debugging an ISR 500 / `econnrefused` burst. |
 | `docs/guides/process/PR_DESCRIPTION_GUIDE.md` | writing any PR description. |
+| `docs/guides/process/ADDING_A_HOMEPAGE_STYLE.md` | adding or editing a homepage art-direction **STYLE** (or any `HOMEPAGE_*` prompt layer) — the seed edit, the mandatory migration, and the DEV→QA→PROD path. |
 | `docs/guides/process/DOCUMENTATION_GUIDE.md` | writing/updating any doc, a Lessons Learned entry, or a memory. |
 | `docs/reference/LESSONS_LEARNED.md` | **append to it** whenever you solve a recurring-type issue; skim before debugging a familiar-smelling failure. |
 | `docs/reference/PROJECT_STRUCTURE.md` | a structural change (new top-level dir, moved module, new route group) — update it in the same PR. |

@@ -7,12 +7,18 @@ import type { PrismaClient } from "@prisma/client";
  *   - 15 HOMEPAGE_INDUSTRY (vertical cards; "Generic" is the default).
  * The refactored craft-only HOMEPAGE_BASE body lives in homepage-base-prompt.ts.
  *
+ * >> ADDING or editing a style/industry? Follow the runbook:
+ * >> docs/guides/process/ADDING_A_HOMEPAGE_STYLE.md — editing this array is NOT
+ * >> enough to ship it; hosted envs get these rows ONLY via a migration.
+ *
  * Every row has a FIXED UUID so upsert-by-id is idempotent and can never touch
  * operator-created prompts (which get random ids). The SAME ids + bodies are
- * inserted (ON CONFLICT (id) DO UPDATE) by migration
- * 20261001130000_seed_homepage_prompt_layers so hosted environments get the
- * rows on deploy without running a seed script. Keep the two in sync if a body
- * is ever edited (the migration SQL is generated from these constants).
+ * inserted (ON CONFLICT (id) DO UPDATE) by migrations so hosted environments get
+ * the rows on deploy without running a seed script: the original library in
+ * 20261001130000_seed_homepage_prompt_layers, and each later card in its own
+ * 20261003..0000_seed_homepage_style_* / ..6120000_seed_homepage_style_studio_editorial
+ * migration. Keep the seed body and its migration body in sync (the migration SQL
+ * is generated from these constants).
  *
  * ID scheme (UUIDv4-shaped, last 12 hex digits carry the meaning):
  *   avoid    00000000-0000-4000-8000-0000000000a0
