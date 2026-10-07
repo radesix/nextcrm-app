@@ -26,7 +26,7 @@ const sql = readdirSync(migrationsDir, { withFileTypes: true })
 
 describe("seed constants vs seed migrations", () => {
   it("covers the expected number of layer rows", () => {
-    expect(ALL_LAYER_PROMPTS.length).toBe(31);
+    expect(ALL_LAYER_PROMPTS.length).toBe(32);
   });
 
   it.each(ALL_LAYER_PROMPTS.map((p) => [p.name, p] as const))(
