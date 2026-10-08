@@ -2,10 +2,11 @@ import { inngest } from "@/inngest/client";
 import { NonRetriableError } from "inngest";
 import { prismadb } from "@/lib/prisma";
 import { getApiKey } from "@/lib/api-keys";
-import { harvestSource, type HarvestResult } from "@/lib/homepage/harvest-source";
+import { harvestSource } from "@/lib/homepage/harvest-source";
 import { generateHomepage as generateHomepageHtml } from "@/lib/homepage/provider";
 import { buildSystemPrompt, buildImageBrief } from "@/lib/homepage/prompt";
-import { materializeHtml, LOGO_PLACEHOLDER } from "@/lib/homepage/materialize";
+import { buildBrief, buildOperatorPrompt, AUTO_REFINE_PROMPT } from "@/lib/homepage/brief";
+import { materializeHtml } from "@/lib/homepage/materialize";
 import { planHomepageImages, planRefineImage } from "@/lib/homepage/images/plan";
 import { resolveImageProviders, generateWithFallback } from "@/lib/homepage/images/resolve";
 import type { GeneratedImage } from "@/lib/homepage/images/types";
@@ -159,11 +160,6 @@ type TargetRow = {
   industry?: string | null;
 };
 
-const BASE_PROMPT =
-  "Redesign this small business's homepage as a modern, professional, conversion-focused page.";
-const AUTO_REFINE_PROMPT =
-  "Critique the rendered draft against the rubric (hierarchy, spacing, contrast, mobile layout, brand fidelity) and produce an improved version. Fix concrete weaknesses; do not invent facts.";
-
 // Appended to a HUMAN refine so the operator can get genuinely new imagery.
 // A brand-new token (next unused number) signals "generate a fresh image for this
 // slot"; an existing token is left untouched and reuses its current image.
@@ -184,30 +180,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
     timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
   });
   return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
-}
-
-function buildBrief(
-  target: TargetRow,
-  brand: HarvestResult["brand"] | null,
-  logoDataUri: string | null | undefined,
-): string {
-  const lines = [`Business: ${target.company ?? "(unknown)"}`];
-  if (target.company_website) lines.push(`Current website: ${target.company_website}`);
-  if (target.description) lines.push(`Description: ${target.description}`);
-  if (brand) {
-    if (brand.colors.length) lines.push(`Brand colors: ${brand.colors.join(", ")}`);
-    if (brand.fonts.length) lines.push(`Brand fonts: ${brand.fonts.join(", ")}`);
-    if (brand.copy) lines.push(`Copy from the current site:\n${brand.copy}`);
-  }
-  // Never hand the model a remote logo URL — it wouldn't load under the render
-  // egress block. When we have the logo, tell the model to use the placeholder
-  // token we substitute at render time; otherwise it uses a text wordmark.
-  if (logoDataUri) {
-    lines.push(
-      `Business logo: set the logo <img> src attribute to the EXACT token ${LOGO_PLACEHOLDER} (it is replaced with the real logo). Do not use any other logo URL.`,
-    );
-  }
-  return lines.join("\n");
 }
 
 function previewUrls(slug: string): { preview_url: string | null; screenshot_url: string | null } {
@@ -745,7 +717,7 @@ async function generateFlow(step: StepLike, data: GenerateHomepageEventData, isF
       logoDataUri,
       images,
     };
-    const operator = data.prompt ? `${BASE_PROMPT}\n\nOperator instructions: ${data.prompt}` : BASE_PROMPT;
+    const operator = buildOperatorPrompt(data.prompt);
 
     let current = await runPass(step, "initial", {
       ...baseArgs,

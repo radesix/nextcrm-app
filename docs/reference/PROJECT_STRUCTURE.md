@@ -147,6 +147,12 @@ lib/homepage/
                                 homepage/target.upload, audit (shared core behind the upload route)
   upload-limits.ts              MAX_UPLOAD_BYTES (4 MB) — plain module (a "use server" file can't export
                                 constants) shared by the route core and the drawer's client-side guard
+  upload-check.ts               looksLikeHtml (the upload endpoint's gate, shared with upload-homepage-core) +
+                                checkUploadReady(html) — pre-flight for an upload: size, is-HTML, no leftover
+                                __RADE_* tokens, no remote resource outside the render allowlist (used by the
+                                /homepage skill before the operator uploads)
+  brief.ts                      buildBrief + buildOperatorPrompt + AUTO_REFINE_PROMPT — import-light, shared
+                                by the generation job AND the keyless /homepage skill (byte-identical text)
   harvest-source.ts             harvestSource(url): SSRF-guarded (lib/net/host-guard.ts) fetch +
                                 screenshot + brand extraction; inlines the logo as a data: URI
   provider.ts                   Anthropic vision provider: generateHomepage({brief,prompt,previousHtml?,...});
@@ -190,6 +196,11 @@ app/[locale]/(routes)/campaigns/targets/[targetId]/components/GenerateHomepageDr
                                 upload-your-own-HTML (refine is disabled while an upload is current)
 lib/mcp/tools/crm-homepage.ts   MCP crm_generate_homepage, crm_get_homepage_status
 scripts/smoke/homepage-render-smoke.cjs   manual chromium launch smoke (Linux/serverless)
+scripts/homepage-session/       keyless in-session generator behind the `/homepage` skill
+                                (.claude/skills/homepage/SKILL.md): prep.ts (real buildSystemPrompt +
+                                harvestSource + buildBrief), images.ts (site-photo list/fetch/crop/plan),
+                                render.ts (materialize + upload-check + real renderAndScreenshot + review
+                                shots). Local dev tooling only; work dir out/homepage-session/<slug>/ (gitignored)
 prisma/migrations/20260930120000_homepage_versions/   crm_Target_Homepage_Version + current_version_id
 prisma/migrations/2026093013*/  HOMEPAGE_BASE prompt kind, UPLOAD pass kind (ALTER TYPE ADD VALUE),
                                 seeded default base prompt

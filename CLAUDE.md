@@ -293,6 +293,7 @@ Project skills in `.claude/skills/` (run the actual skill when invoked by name):
 - **`deep-review`** — thorough pre-PR review (security, money paths, correctness). Step 1 of the pre-PR gate.
 - **`ship-phase`** — finish a unit of work: deep review → doc-sync → checks → commit → push → PR.
 - **`fix-ci`** — diagnose a failing CI run, fix, verify locally, push until green.
+- **`homepage`** — generate a prospect homepage in-session (no server API keys) from the live industry/style layers, render-check it, and hand back an upload-ready HTML file for QA/prod.
 
 Superpowers process skills (brainstorming, systematic-debugging, TDD,
 verification-before-completion) set the approach; project skills win on
