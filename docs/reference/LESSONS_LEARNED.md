@@ -1338,3 +1338,31 @@
   `…_seed_homepage_style_<slug>` migration whose `INSERT … ON CONFLICT (id) DO UPDATE` body
   **matches the seed constant verbatim**, using the next fixed id (`…0057NN`, `NN` = hex of spec
   order). Then DEV → QA (`advance-qa`) → verify → Promote to prod.
+
+### Homepage pipeline code run under `tsx` silently fails the harvest (`__name is not defined`)
+
+- **Symptom:** running `harvestSource()` from a local `tsx` script returned `null` with only
+  `[HARVEST_SOURCE] failed for host … Error` — no brand, no logo, no source screenshot — while the
+  same site loaded fine in a plain Playwright test.
+- **Cause:** `tsx` (esbuild `keepNames`) wraps functions in a `__name(...)` helper. Functions that
+  Playwright serializes into the page via `page.evaluate` (e.g. harvest-source's `extractBrand`) then
+  reference `__name`, which doesn't exist in the browser, so the evaluate throws and the
+  harvest's catch-all swallows it. (Next/webpack builds don't inject it, so the deployed job is unaffected.)
+- **Fix / rule:** scripts that drive `page.evaluate` under `tsx` must define a no-op in every page:
+  `context.addInitScript("globalThis.__name = (f) => f")`. `scripts/homepage-session/shared.ts`
+  does this by patching `chromium.launch` (covers `launchBrowser()`, which dynamically imports the same
+  module instance). When a local harvest/render returns null, suspect this before the network.
+
+### An uploaded homepage loses every `__RADE_IMG_n__` image, and its screenshot looks stale for minutes
+
+- **Symptom (1):** a generated page uploaded via "Upload your own HTML" shows no photos.
+  **Cause:** the upload flow materializes with **no** image set, so image tokens are stripped
+  (by design, to avoid broken `<img>`). The logo token is filled only if the row already has a
+  harvested `logo_data_uri`.
+  **Rule:** an uploaded page must be fully self-contained: inline images and the logo as `data:` URIs
+  (compressed, to stay under 4 MB). `lib/homepage/upload-check.ts` (`checkUploadReady`) flags leftover tokens.
+- **Symptom (2):** right after an upload, `/p/<slug>/screenshot.png` still shows the previous page.
+  **Cause:** the preview routes send `public, max-age=300, s-maxage=300, stale-while-revalidate=600`,
+  so the CDN serves the old object for up to about 15 minutes. The HTML itself is already new.
+  **Rule:** verify with a cache-buster (`screenshot.png?v=<ts>`), not by re-fetching the bare URL.
+

@@ -5,6 +5,7 @@ import { isHomepageRunActive } from "@/lib/homepage/queue-generation";
 import { ensureUniqueSlug, slugify } from "@/lib/homepage/slug";
 import { putHomepageUpload } from "@/lib/homepage/storage";
 import { MAX_UPLOAD_BYTES } from "@/lib/homepage/upload-limits";
+import { looksLikeHtml } from "@/lib/homepage/upload-check";
 
 export type UploadHomepageResult =
   | { ok: true; slug: string }
@@ -36,8 +37,7 @@ export async function runUploadHomepage(input: {
   if (Buffer.byteLength(html, "utf8") > MAX_UPLOAD_BYTES) {
     return { ok: false, code: "TOO_LARGE", message: "File too large (max 4 MB)" };
   }
-  const probe = html.trim().toLowerCase();
-  if (!(probe.includes("<html") || probe.includes("<!doctype html") || probe.includes("<body"))) {
+  if (!looksLikeHtml(html)) {
     return { ok: false, code: "NOT_HTML", message: "That doesn't look like an HTML document" };
   }
 
