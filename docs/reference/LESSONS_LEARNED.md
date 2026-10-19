@@ -37,6 +37,27 @@
 - **Tell:** the error names a Client Component boundary, and the offending field is
   a money or quantity column.
 
+### Null-prototype objects (TipTap/ProseMirror JSON) crash a server action as "React error #441"
+
+- **Symptom:** saving a campaign email template in production showed
+  "Minified React error #441" (the generic "error in the Server Components render, message
+  omitted" code). The Vercel log said `Cannot access toStringTag on the server. You cannot
+  dot into a temporary client reference…` with a Prisma `clientVersion`. It only happened once
+  the body had a link, heading or image. Plain-paragraph templates saved fine.
+- **Cause:** ProseMirror builds node/mark `attrs` with `Object.create(null)`, and TipTap's
+  `editor.getJSON()` passes them through as-is. React's reply encoder doesn't treat
+  null-prototype objects as plain data, so it sends them to the server action as opaque
+  *temporary client references*. Prisma then crashes when it inspects the `Json` value.
+  Plain paragraphs carry no `attrs`, which is why simple content worked.
+- **Fix / rule:** before anything from a rich-text editor (or another library that builds
+  objects with `Object.create(null)`) goes to a server action, rebuild it as plain objects
+  with a `JSON.parse(JSON.stringify(...))` round-trip. TipTap does this in
+  `lib/campaigns/editor-json.ts` (`getPlainEditorJson`), wired into
+  `components/campaigns/TipTapEditor.tsx` and guarded by `__tests__/campaigns/editor-json.test.ts`.
+  The server can't fix this after the fact, because a temporary reference is just a proxy.
+- **Tell:** React error #441 in prod means "read the Vercel runtime log". If the log names
+  "temporary client reference", a non-plain object crossed client→server.
+
 ### A `NEXT_PUBLIC_` variable is inlined into the client bundle — never put a secret in one
 
 - **Symptom:** a token/key read via `process.env.NEXT_PUBLIC_*` (even inside a

@@ -15,6 +15,8 @@ import {
   Heading2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+// fork: plain-object JSON for server actions (see lib/campaigns/editor-json.ts)
+import { getPlainEditorJson } from "@/lib/campaigns/editor-json";
 
 type Props = {
   content?: string; // HTML string
@@ -34,7 +36,7 @@ export function TipTapEditor({ content, onChange }: Props) {
     content: content ?? "",
     immediatelyRender: false,
     onUpdate({ editor }) {
-      onChange?.(editor.getHTML(), editor.getJSON() as object);
+      onChange?.(editor.getHTML(), getPlainEditorJson(editor));
     },
   });
 

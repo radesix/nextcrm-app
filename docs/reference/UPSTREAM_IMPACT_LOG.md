@@ -924,3 +924,22 @@ and `__tests__/crm/assistant/` stays green. If upstream changes `crm_Leads` phon
 columns or `crm_Activities`/`crm_ActivityLinks` shape, re-check
 `lib/crm/assistant/record-inquiry.ts` (its raw SQL names `"crm_Leads"`, `phone`,
 `"deletedAt"`, `"createdAt"`).
+
+---
+
+## fix/tiptap-json-plain-objects — plain-object TipTap JSON so templates with links save  (PR: TBD)
+
+Saving a campaign template whose body had a link, heading or image crashed in production
+(React #441 / Prisma "Cannot access toStringTag… temporary client reference"), because
+`editor.getJSON()` returns null-prototype ProseMirror `attrs`. A new fork helper,
+`lib/campaigns/editor-json.ts`, rebuilds the JSON as plain objects. **1 upstream-owned
+file** touched.
+
+| Upstream file | +/− | Insert-only? | What / where | Risk |
+|---|---|---|---|---|
+| `components/campaigns/TipTapEditor.tsx` | +3/−1 | **near insert-only** | +2 lines: a fork-comment import of `getPlainEditorJson` after the `Button` import. 1 line changed in `onUpdate`: `editor.getJSON() as object` → `getPlainEditorJson(editor)`. | Low (on conflict, keep upstream's version and re-apply the one-call swap) |
+
+**Re-verify after any upstream merge:** `__tests__/campaigns/editor-json.test.ts` stays
+green. Its third case checks that `TipTapEditor.tsx` still passes `getPlainEditorJson(editor)`
+to `onChange`. Upstream has the same bug, so this fix is a good candidate to contribute back.
+
