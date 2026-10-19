@@ -61,7 +61,7 @@ multiplex instead of exhausting the session pooler (`EMAXCONNSESSION` →
 
 | Upstream file | +/− | Insert-only? | What / where | Risk |
 |---|---|---|---|---|
-| `lib/prisma.ts` | +5/-1 | **mixed** | insert: import of `resolveRuntimeDatabaseUrl`. rewrite: the single `connectionString` line now calls the resolver (`RUNTIME_DATABASE_URL` → else `DATABASE_URL`) instead of reading `DATABASE_URL` directly, plus a 3-line comment. This file is already fork-diverged (the `DB_POOL_MAX` pool + error handler). `prisma.config.ts`/`schema.prisma` intentionally **untouched** — migrations keep using `DATABASE_URL`. | Low |
+| `lib/prisma.ts` *(superseded by the v0.36 sync: now `lib/prisma-base.ts`)* | +5/-1 | **mixed** | insert: import of `resolveRuntimeDatabaseUrl`. rewrite: the single `connectionString` line now calls the resolver (`RUNTIME_DATABASE_URL` → else `DATABASE_URL`) instead of reading `DATABASE_URL` directly, plus a 3-line comment. This file is already fork-diverged (the `DB_POOL_MAX` pool + error handler). `prisma.config.ts`/`schema.prisma` intentionally **untouched** — migrations keep using `DATABASE_URL`. | Low |
 
 New fork-owned files (no merge risk): `lib/db/runtime-database-url.ts`,
 `__tests__/db/runtime-database-url.test.ts`. **Re-verify after an upstream merge:**
@@ -188,7 +188,7 @@ upstream changed columns.
 
 | Upstream file | +/− | Insert-only? | What / where | Risk |
 |---|---|---|---|---|
-| `lib/prisma.ts` | +~16/−1 | **insert** | in `prismaClientSingleton()`: `new Pool({ connectionString })` → `new Pool({ connectionString, max: Number(process.env.DB_POOL_MAX) \|\| 3 })`; add `pool.on("error", …)` before `new PrismaPg(pool)` (+ explanatory comments citing SUPABASE_ON_VERCEL.md §3–4) | Low |
+| `lib/prisma.ts` *(superseded by the v0.36 sync: now `lib/prisma-base.ts`)* | +~16/−1 | **insert** | in `prismaClientSingleton()`: `new Pool({ connectionString })` → `new Pool({ connectionString, max: Number(process.env.DB_POOL_MAX) \|\| 3 })`; add `pool.on("error", …)` before `new PrismaPg(pool)` (+ explanatory comments citing SUPABASE_ON_VERCEL.md §3–4) | Low |
 
 **Why:** upstream builds the pool with no `max`, so `pg` uses its default of **10** per function
 instance. Against the hosted **session-mode** pooler (`pool_size 15`), two warm Vercel instances
@@ -980,4 +980,53 @@ outside its own test, but it's kept to avoid divergence from upstream.
 `__tests__/campaigns/campaign-send-failure.test.ts` and
 `__tests__/campaigns/api/unsubscribe-*.test.ts` stay green. If upstream changes the
 `resolve-recipients` step shape, the wiring test fails and points at it.
+
+---
+
+## sync/upstream-20261019-1258 — upstream sync v0.24 → v0.36 (314 commits)  (PR: TBD)
+
+Merged `upstream/main` (823ab7b6, release 0.36.0) via `scripts/sync-upstream.sh`. Upstream added
+a plugin system and SDK, the Odoo connector, orders/pricing/catalog, account protection, a
+`partner` role, authz scoping fixes and 9 migrations (all additive). There were **16 textual
+conflicts**, plus **1 silent behavior change** that merged cleanly and was undone by hand. The
+table records the fork's divergence **per upstream file after the sync** (`git diff upstream/main`)
+and the resolution choice.
+
+| Upstream file | vs upstream after sync | Resolution | Risk next sync |
+|---|---|---|---|
+| `inngest/functions/campaigns/send-step.ts` | +32/−5 | **Silent change undone:** upstream switched the send to `await resendHelper()` (transactional key, so no click tracking). Kept the fork's module-level `RESEND_CAMPAIGNS_API_KEY` client and removed upstream's in-handler line. Adopted upstream's `buildUnsubscribeUrl` but pass `NEXTAUTH_URL` (upstream defaults to `NEXT_PUBLIC_APP_URL`). The #60 completion/onFailure hooks are kept. Locked by `__tests__/campaigns/campaign-sender-key.test.ts`. | **High.** Re-diff the handler body every sync. |
+| `app/api/campaigns/webhooks/resend/route.ts` | +211/−12 | **Kept the fork's side** (`email_id` matching, event timestamps, homepage clicks, bounce suppression + audit, in-route Svix check). Upstream's change was only signature verification, now in its own unused `lib/campaigns/resend-signature.ts`. | Medium |
+| `__tests__/campaigns/api/webhooks-resend.test.ts` | +330/−102 | Kept the fork's side, matching the route. | Medium |
+| `lib/prisma-base.ts` *(new upstream file)* | +27/−2 | **Port:** upstream moved the Prisma client here from `lib/prisma.ts`. The fork's pool factory (`resolveRuntimeDatabaseUrl`, `DB_POOL_MAX` cap, idle-error handler) is ported here. `lib/__tests__/prisma.test.ts` now targets this file. | Medium |
+| `lib/prisma.ts` | **0 (now identical)** | Took upstream's version (`prismadb` = plugin-rules + private-document-URL extensions over `prismaBase`). The fork divergence here is gone. | None |
+| `lib/auth.ts` | +24/−23 | Kept fork hooks/social config and added upstream's `partner` role. **New insert:** `cookieCache: SESSION_COOKIE_CACHE` (60s, `lib/auth-session-cache.ts`), because upstream's partner gate reads the session on nearly every request. | Low |
+| `proxy.ts` | +18/−0 | Union: fork `/p/` preview gate + upstream partner gate (imports). | Low |
+| `app/api/inngest/route.ts` | +4/−0 | Union: fork homepage functions + upstream `getPluginFunctions()`. | Low |
+| `lib/resend.ts` | +8/−0 | Union: the fork `redirectRecipients` wrapper is kept around upstream's encrypted-key helper. | Low |
+| `.env.example` | +101/−0 | Fork block kept and upstream's `SEED_DEMO_DATA` added. Removed the fork's duplicate `EMAIL_FROM` / `ANTHROPIC_API_KEY` (upstream's block has them now). Added `NEXT_PUBLIC_MINIO_ENDPOINT` (upstream dropped it, but it's still read as a fallback), `PLUGIN_HTTP_ALLOW_PRIVATE_HOSTS`, `REDIS_URL`, `KV_URL`. | Low |
+| `app/[locale]/(routes)/crm/accounts/table-components/columns.tsx` | +11/−7 | Both sides fixed the null-first-name crash; kept the fork's (it also filters empty names and comma-joins). | Low |
+| `app/[locale]/(routes)/crm/accounts/table-data/schema.tsx` | +7/−0 | Same fix; kept the fork's explanatory comment. | Low |
+| `lib/audit-log.ts` | +5/−0 | Fork comment kept. | Low |
+| `inngest/functions/documents/generate-thumbnail.ts` | +5/−0 | Took upstream's import line (adds `MINIO_PUBLIC_URL`, `sharp`). | Low |
+| `.gitignore` | +4/−2 | Union. | Low |
+| `lib/__tests__/partner-routes.test.ts` | +2/−1 | Added the fork's `prompts` label to upstream's campaigns-menu fixture (type break). | Low |
+| `prisma/schema.prisma` | +203/−0 | Both sides appended models at the same place: kept both and restored the shared closing brace. | Low |
+| `actions/crm/activities/create-activity.ts` | +3/−0 | **Clean-merge regression, caught by E2E:** upstream's new per-entity write check (`ASSERT_CAN_WRITE`, cb52f2a8) refused any type outside its map, so linking an activity to the fork's `target` returned "Forbidden" and outreach sends silently lost their timeline entry. Inserted `target: assertCanWriteTarget`, which keeps the scope check. Guarded by `actions/crm/activities/__tests__/create-activity-target-link.test.ts` and `tests/e2e/target-ai-email.spec.ts`. | Medium (upstream may extend this map) |
+| `.github/workflows/ci.yml` | +3/−0 (this sync) | **Clean-merge regression, caught by CI:** upstream dropped `NEXTAUTH_URL` from the job env, so the fork's fail-closed send core (`MISSING_BASE_URL_MESSAGE`) failed 5 unit tests. Restored with a fork comment. | Medium (upstream may keep editing this env block) |
+
+Fork-owned files changed: `lib/auth-session-cache.ts` (new), `lib/__tests__/prisma.test.ts`,
+`scripts/check-env-docs.sh` (`SEED_DEMO_DATA` moved off the ignore-list),
+`docs/reference/ENVIRONMENT_VARIABLES.md`, the new tests above, and the docs.
+
+**Migrations:** upstream's 9 (`20261005000000` … `20261018000000`) are additive and interleave
+with the fork's by timestamp. Rehearsed on the local DEV DB, which (like QA/prod) already had
+the fork's later migrations: `prisma migrate deploy` applied them all out of order, and the
+remaining schema-vs-DB drift is the documented baseline only.
+
+**Known gaps:** see `CUSTOMIZATIONS.md` → *Known gaps — upstream sync v0.36*.
+
+**Re-verify after the next upstream merge:** `campaign-sender-key`, `campaign-recipients*`,
+`webhooks-resend`, `lib/__tests__/prisma.test.ts` and `session-cookie-cache` stay green.
+`git diff <merge-base> upstream/main -- inngest/functions/campaigns/send-step.ts lib/prisma-base.ts lib/auth.ts proxy.ts`
+and re-read the merged handler bodies, not just the conflicts.
 

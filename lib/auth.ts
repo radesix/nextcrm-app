@@ -3,9 +3,10 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP, testUtils } from "better-auth/plugins";
 import { admin as adminPlugin } from "better-auth/plugins";
 import { prismadb } from "@/lib/prisma";
-import { ac, admin, manager, user } from "@/lib/auth-permissions";
+import { ac, admin, manager, user, partner } from "@/lib/auth-permissions";
 import { handleUserCreated } from "@/lib/auth-hooks";
 import { socialProvidersConfig } from "@/lib/auth-social";
+import { SESSION_COOKIE_CACHE } from "@/lib/auth-session-cache";
 import resendHelper from "@/lib/resend";
 
 const isDemo = process.env.NEXT_PUBLIC_APP_URL === "https://demo.nextcrm.io";
@@ -23,6 +24,8 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 7,       // 7 days
     updateAge: 60 * 60 * 24,            // refresh every 24 hours
+    // fork: signed-cookie session cache (see lib/auth-session-cache.ts)
+    cookieCache: SESSION_COOKIE_CACHE,
   },
 
   user: {
@@ -97,7 +100,7 @@ export const auth = betterAuth({
       : []),
     adminPlugin({
       ac,
-      roles: { admin, manager, user },
+      roles: { admin, manager, user, partner },
       defaultRole: "user",
     }),
   ],

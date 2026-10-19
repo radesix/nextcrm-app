@@ -25,6 +25,7 @@ export {
 } from "./scopes/crm";
 export {
   filterAuthorizedContactIds,
+  filterWritableContactIds,
   filterAuthorizedTargetIds,
   filterAuthorizedAccountIds,
   filterAuthorizedLeadIds,
@@ -35,6 +36,8 @@ export {
   assertCanCancelTargetEnrichment,
 } from "./scopes/crm";
 export { assertCanWriteAccount } from "./scopes/crm";
+export { assertCanWritePriceList } from "./scopes/pricing";
+export { orderReadScopeWhere } from "./scopes/orders";
 export {
   accountUserScopeOR,
   accountReadScopeWhere,
@@ -63,7 +66,12 @@ export {
   assertCanWriteOpportunityLineItem,
   assertCanWriteContractLineItem,
 } from "./scopes/crm";
-export { assertCanReadActivityForEntity, assertCanWriteActivity } from "./scopes/crm";
+export {
+  assertCanReadActivityForEntity,
+  assertCanWriteActivity,
+  assertPartnerCanLinkActivity,
+  PARTNER_EDIT,
+} from "./scopes/crm";
 export {
   campaignReadScopeWhere,
   campaignTemplateReadScopeWhere,
@@ -77,6 +85,7 @@ export {
   assertCanReadDocument,
   assertCanWriteDocument,
   filterAuthorizedDocumentIds,
+  filterWritableDocumentIds,
 } from "./scopes/crm";
 export {
   boardReadScopeWhere,
@@ -86,5 +95,6 @@ export {
   assertCanReadTask,
   assertCanWriteTask,
 } from "./scopes/crm";
+export { isUnhandledRole } from "./scopes/unhandled-role";
 export type { ReportScope } from "./scopes/report-scope";
 export { getReportScope } from "./scopes/report-scope";

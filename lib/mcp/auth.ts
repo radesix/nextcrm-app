@@ -37,9 +37,14 @@ export async function getMcpUser(): Promise<McpUser> {
   // owners from admins/managers.
   const dbUser = await prismadb.users.findUnique({
     where: { id: userId },
-    select: { id: true, role: true },
+    select: { id: true, role: true, userStatus: true },
   });
-  if (!dbUser) {
+  // A valid token is not enough: PENDING/INACTIVE users must not reach the API.
+  if (!dbUser || dbUser.userStatus !== "ACTIVE") {
+    throw new Error("Unauthorized");
+  }
+  // No API or MCP access for partners (partner-role spec, decision 6).
+  if (dbUser.role === "partner") {
     throw new Error("Unauthorized");
   }
 

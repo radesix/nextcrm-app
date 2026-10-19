@@ -37,7 +37,9 @@ jest.mock("@prisma/client", () => ({
   PrismaClient: jest.fn().mockImplementation(() => ({ $disconnect: jest.fn() })),
 }));
 
-describe("lib/prisma pg Pool configuration", () => {
+// The pg Pool moved to lib/prisma-base.ts in the upstream sync (lib/prisma.ts now wraps it
+// with the plugin-rules extension), so the budget guard targets the base client.
+describe("lib/prisma-base pg Pool configuration", () => {
   const originalPoolMax = process.env.DB_POOL_MAX;
 
   beforeEach(() => {
@@ -56,7 +58,7 @@ describe("lib/prisma pg Pool configuration", () => {
   });
 
   it("caps the pool at DB_POOL_MAX with a default of 3 (never pg's default of 10)", () => {
-    require("@/lib/prisma");
+    require("@/lib/prisma-base");
 
     expect(poolCtorArgs).toHaveLength(1);
     expect(poolCtorArgs[0]).toMatchObject({ max: 3 });
@@ -65,7 +67,7 @@ describe("lib/prisma pg Pool configuration", () => {
   it("honors an explicit DB_POOL_MAX override", () => {
     process.env.DB_POOL_MAX = "7";
 
-    require("@/lib/prisma");
+    require("@/lib/prisma-base");
 
     expect(poolCtorArgs[0]).toMatchObject({ max: 7 });
   });
@@ -75,13 +77,13 @@ describe("lib/prisma pg Pool configuration", () => {
     // become max:0 → pg's falsy fallback of 10, which re-creates the exhaustion.
     process.env.DB_POOL_MAX = "";
 
-    require("@/lib/prisma");
+    require("@/lib/prisma-base");
 
     expect(poolCtorArgs[0]).toMatchObject({ max: 3 });
   });
 
   it("attaches a Pool-level 'error' handler so idle-reaps don't crash the instance", () => {
-    require("@/lib/prisma");
+    require("@/lib/prisma-base");
 
     expect(registeredEvents).toContain("error");
   });

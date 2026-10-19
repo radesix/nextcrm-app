@@ -1,6 +1,7 @@
 "use server";
 import { prismadb } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { pluginRuleErrorMessage } from "@/lib/plugins/action-errors";
 import { inngest } from "@/inngest/client";
 import { writeAuditLog } from "@/lib/audit-log";
 import { requireAuthenticated, AuthenticationError } from "@/lib/authz";
@@ -29,12 +30,13 @@ export const createAccount = async (data: {
   annual_revenue?: string;
   member_of?: string;
   industry?: string;
+  pricelist_id?: string | null;
 }) => {
   // Plain create: the row is owned by its creator, so authentication is
   // sufficient — no object-level write assert needed.
   let user;
   try {
-    user = await requireAuthenticated();
+    user = await requireAuthenticated({ partner: true });
   } catch (e) {
     if (e instanceof AuthenticationError) return { error: "Unauthorized" };
     throw e;
@@ -50,8 +52,14 @@ export const createAccount = async (data: {
         createdBy: user.id,
         updatedBy: user.id,
         ...data,
-        assigned_to: data.assigned_to || user.id,
+        // A partner's new account has him as partner and no internal owner
+        // yet (spec § Writes): admins/managers find it among unowned accounts.
+        assigned_to: user.role === "partner" ? null : data.assigned_to || user.id,
         industry: data.industry || undefined,
+        pricelist_id: data.pricelist_id || undefined,
+        // The partner is set only through setAccountPartner (admin/manager),
+        // except that a partner's own new account names him.
+        partnerUserId: user.role === "partner" ? user.id : undefined,
         status: "Active",
       },
     });
@@ -66,6 +74,8 @@ export const createAccount = async (data: {
     revalidatePath("/[locale]/(routes)/crm/accounts", "page");
     return { data: account };
   } catch (error) {
+    const ruleMessage = await pluginRuleErrorMessage(error);
+    if (ruleMessage) return { error: ruleMessage };
     console.log("[CREATE_ACCOUNT]", error);
     return { error: "Failed to create account" };
   }

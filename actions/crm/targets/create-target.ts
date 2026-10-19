@@ -51,7 +51,7 @@ export const createTarget = async (data: {
         ...(await industryPrefillData(rest.industry)), // fork: best-effort Industry pre-match
       },
     });
-    revalidatePath("/[locale]/(routes)/crm/targets", "page");
+    revalidatePath("/[locale]/(routes)/campaigns/targets", "page");
     return { data: target };
   } catch (error) {
     return { error: "Failed to create target" };

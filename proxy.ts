@@ -3,6 +3,8 @@ import { routing } from "./i18n/routing";
 import { getSessionCookie } from "better-auth/cookies";
 import { NextRequest, NextResponse } from "next/server";
 import { isPreviewHostAllowed, isPreviewsBaseMalformed } from "./lib/homepage/preview-host";
+import { auth } from "@/lib/auth";
+import { isPartnerAllowedPath } from "@/lib/partner-routes";
 
 const intlMiddleware = createMiddleware(routing);
 
@@ -48,6 +50,19 @@ export async function proxy(req: NextRequest) {
 
   const sessionCookie = getSessionCookie(req);
 
+  // Partners get only the routes in lib/partner-routes.ts, refused here on the
+  // server for pages and API alike (deny by default). The session is looked up
+  // only off the allow-list, so partner pages and cookie-less calls cost nothing.
+  if (sessionCookie && !isPartnerAllowedPath(path)) {
+    const session = await auth.api.getSession({ headers: req.headers });
+    if (session?.user.role === "partner") {
+      if (path.startsWith("/api")) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL("/", req.nextUrl));
+    }
+  }
+
   // Admin-only routes — require session cookie (role checked server-side)
   if (ADMIN_ONLY_PATHS.some((p) => path.startsWith(p))) {
     if (!sessionCookie) {
@@ -68,6 +83,11 @@ export async function proxy(req: NextRequest) {
     }
   }
 
+  // Other API routes authenticate themselves
+  if (path.startsWith("/api")) {
+    return NextResponse.next();
+  }
+
   // Non-API routes — delegate to next-intl
   return intlMiddleware(req);
 }
@@ -81,6 +101,8 @@ export const config = {
     "/api/user/deactivate/:path*",
     "/api/user/inviteuser",
     "/api/admin/:path*",
+    // Every other API route, for the partner allow-list
+    "/api/:path*",
     // better-auth API
     "/api/auth/:path*",
     // All non-API routes (existing intl matcher)

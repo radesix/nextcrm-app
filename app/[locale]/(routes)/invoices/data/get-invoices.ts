@@ -1,7 +1,11 @@
 import { prismadb } from "@/lib/prisma";
+import { requireAuthenticated } from "@/lib/authz";
+import { invoiceReadScopeWhere } from "@/lib/invoices/permissions";
 
 export async function getInvoices() {
+  const user = await requireAuthenticated();
   return prismadb.invoices.findMany({
+    where: invoiceReadScopeWhere(user),
     orderBy: { createdAt: "desc" },
     take: 100,
     include: {
@@ -12,8 +16,9 @@ export async function getInvoices() {
 }
 
 export async function getInvoiceById(id: string) {
-  return prismadb.invoices.findUnique({
-    where: { id },
+  const user = await requireAuthenticated();
+  return prismadb.invoices.findFirst({
+    where: { id, ...invoiceReadScopeWhere(user) },
     include: {
       lineItems: {
         include: { product: true, taxRate: true },

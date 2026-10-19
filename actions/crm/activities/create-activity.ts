@@ -1,5 +1,17 @@
 "use server";
 import { getSession } from "@/lib/auth-server";
+import {
+  assertCanWriteAccount,
+  assertCanWriteContact,
+  assertCanWriteContract,
+  assertCanWriteLead,
+  assertCanWriteOpportunity,
+  assertCanWriteTarget,
+  assertPartnerCanLinkActivity,
+  requireAuthenticated,
+  AuthorizationError,
+  type AuthzUser,
+} from "@/lib/authz";
 import { prismadb } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { emitCalendarOutbound } from "@/lib/crm/calendar/outbound-emit";
@@ -12,8 +24,19 @@ const ENTITY_SLUGS: Record<string, string> = {
   contract: "contracts",
 };
 
+// Linking an activity to a record is a write on that record.
+const ASSERT_CAN_WRITE: Record<string, (user: AuthzUser, id: string) => Promise<void>> = {
+  account: assertCanWriteAccount,
+  contact: assertCanWriteContact,
+  lead: assertCanWriteLead,
+  opportunity: assertCanWriteOpportunity,
+  contract: assertCanWriteContract,
+  // fork: outreach emails log an activity on the fork's `target` entity
+  target: assertCanWriteTarget,
+};
+
 export const createActivity = async (data: {
-  type: "call" | "meeting" | "note" | "email";
+  type: "call" | "meeting" | "note" | "email" | "visit";
   title: string;
   description?: string;
   date: Date;
@@ -24,8 +47,23 @@ export const createActivity = async (data: {
   links: Array<{ entityType: string; entityId: string }>;
 }) => {
   try {
-    const session = await getSession();
+    const session = await getSession({ partner: true });
     if (!session) return { error: "Unauthorized" };
+    // A partner's activity must hang off his partner records only.
+    const authUser = await requireAuthenticated({ partner: true });
+    try {
+      if (authUser.role === "partner") {
+        await assertPartnerCanLinkActivity(authUser, data.links);
+      } else {
+        for (const link of data.links) {
+          if (!Object.hasOwn(ASSERT_CAN_WRITE, link.entityType)) throw new AuthorizationError();
+          await ASSERT_CAN_WRITE[link.entityType](authUser, link.entityId);
+        }
+      }
+    } catch (e) {
+      if (e instanceof AuthorizationError) return { error: "Forbidden" };
+      throw e;
+    }
 
     const activity = await prismadb.$transaction(async (tx) => {
       const created = await (tx as any).crm_Activities.create({

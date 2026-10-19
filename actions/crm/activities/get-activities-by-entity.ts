@@ -11,7 +11,7 @@ const PAGE_SIZE = 25;
 
 export type ActivityWithLinks = {
   id: string;
-  type: "call" | "meeting" | "note" | "email";
+  type: "call" | "meeting" | "note" | "email" | "visit";
   title: string;
   description: string | null;
   date: Date;
@@ -34,7 +34,7 @@ export const getActivitiesByEntity = async (
 ): Promise<{ data: ActivityWithLinks[]; nextCursor: ActivityCursor | null }> => {
   let user;
   try {
-    user = await requireAuthenticated();
+    user = await requireAuthenticated({ partner: true });
   } catch (e) {
     if (e instanceof AuthenticationError) return { data: [], nextCursor: null };
     throw e;

@@ -1,5 +1,9 @@
 import { prismadb } from "@/lib/prisma";
-import { getSession } from "@/lib/auth-server";
+import {
+  requireAuthenticated,
+  targetReadScopeWhere,
+  AuthenticationError,
+} from "@/lib/authz";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -35,10 +39,17 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default async function TargetEnrichmentJobsPage() {
-  const session = await getSession();
-  if (!session) redirect("/sign-in");
+  let user;
+  try {
+    user = await requireAuthenticated();
+  } catch (e) {
+    if (e instanceof AuthenticationError) redirect("/sign-in");
+    throw e;
+  }
 
+  // Jobs on the records the caller can read.
   const records = await prismadb.crm_Target_Enrichment.findMany({
+    where: { target: targetReadScopeWhere(user) },
     orderBy: { createdAt: "desc" },
     take: 200,
     include: {
@@ -94,7 +105,7 @@ export default async function TargetEnrichmentJobsPage() {
                 <TableRow key={record.id} className={record.status === "RUNNING" ? "bg-muted/30" : ""}>
                   <TableCell>
                     <Link
-                      href={`/crm/targets/${record.target.id}`}
+                      href={`/campaigns/targets/${record.target.id}`}
                       className="font-medium hover:underline"
                     >
                       {record.target.first_name} {record.target.last_name}
