@@ -61,6 +61,9 @@ export async function POST(req: Request): Promise<Response> {
           OR: [
             { id: send.target_id },
             { email: { equals: send.email, mode: "insensitive" } },
+            // fork: campaigns also address targets via these (lib/campaigns/campaign-recipients.ts)
+            { company_email: { equals: send.email, mode: "insensitive" } },
+            { personal_email: { equals: send.email, mode: "insensitive" } },
           ],
         },
         data: { do_not_email: true, do_not_email_at: new Date() },

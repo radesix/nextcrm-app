@@ -8,6 +8,11 @@ jest.mock("@/lib/prisma", () => ({
 jest.mock("@/inngest/client", () => ({
   inngest: { send: jest.fn().mockResolvedValue({}) },
 }));
+// fork: the no-recipient guard is covered in __tests__/campaigns/send-campaign-now-recipients.test.ts
+jest.mock("@/lib/campaigns/campaign-recipients", () => ({
+  ...jest.requireActual("@/lib/campaigns/campaign-recipients"),
+  resolveCampaignRecipients: jest.fn().mockResolvedValue([{ id: "t1", email: "t1@x.test" }]),
+}));
 
 import { prismadb } from "@/lib/prisma";
 import { getSession } from "@/lib/auth-server";

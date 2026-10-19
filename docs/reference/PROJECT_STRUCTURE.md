@@ -82,6 +82,8 @@ lib/campaigns/send-target-email-core.ts  shared delivery core (fail-closed unsub
 lib/campaigns/compose-target-email.ts   {{body}} template merge + target merge source
 lib/campaigns/merge-tags.ts             merge-tag resolver (extended with homepage_* tags)
 lib/campaigns/editor-json.ts            getPlainEditorJson: TipTap JSON -> plain objects for server actions
+lib/campaigns/campaign-recipients.ts    campaign audience (email->company->personal fallback),
+                                        no-recipient guard message, sending->sent completion
 lib/mcp/tools/crm-ai-prompts.ts         MCP prompt CRUD tools
 lib/mcp/tools/crm-target-email.ts       MCP crm_send_target_email tool
 app/api/campaigns/webhooks/resend/route.ts   (upstream, fork-extended) Svix-verified Resend webhook.

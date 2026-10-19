@@ -15,6 +15,8 @@ import {
   conflict,
   softDeleteData,
 } from "../helpers";
+// fork: no-recipient guard for campaigns_send
+import { resolveCampaignRecipients, NO_RECIPIENTS_ERROR } from "@/lib/campaigns/campaign-recipients";
 
 // Object-level authorization for campaign tools (GHSA-c9vg-c532-ppqx).
 // Normal users are scoped to campaigns/templates they created; managers and
@@ -154,6 +156,8 @@ export const campaignTools = [
       if (!["draft", "scheduled"].includes(campaign.status ?? "")) {
         conflict(`Cannot send campaign in status: ${campaign.status}`);
       }
+      // fork: no-recipient guard (see lib/campaigns/campaign-recipients.ts)
+      if ((await resolveCampaignRecipients(args.id)).length === 0) conflict(NO_RECIPIENTS_ERROR);
       const now = new Date();
       await prismadb.crm_campaigns.update({
         where: { id: args.id },
