@@ -87,6 +87,17 @@ for wf in advance-qa.yml promote-production.yml; do
   fi
 done
 
+# 7. CI runs on push to main. advance-qa.yml fires on a successful push-to-main CI
+#    run (workflow_run, event == push); without that trigger no merge ever reaches
+#    QA. Upstream v0.36 dropped `main` from ci.yml's push branches (its PR-only
+#    model) and that merged in cleanly, which silently stopped QA deploys.
+ci_push=$(awk '/^on:/{on=1} on&&/^  push:/{p=1;next} p&&/branches:/{print;exit} on&&/^[a-z]/&&!/^on:/{exit}' .github/workflows/ci.yml 2>/dev/null)
+if printf '%s' "$ci_push" | grep -Eq '(\[|, *)main( *,| *\])'; then
+  OK "ci.yml runs on push to main (advance-qa depends on it)"
+else
+  FAIL "ci.yml push trigger no longer includes main; advance-qa will never fire (got: ${ci_push:-none})"
+fi
+
 echo ""
 printf 'Summary: %s%d FAIL%s, %s%d WARN%s\n' \
   "$([ "$fail" -gt 0 ] && echo "$red" || echo "$green")" "$fail" "$reset" \

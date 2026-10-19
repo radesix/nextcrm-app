@@ -1030,3 +1030,23 @@ remaining schema-vs-DB drift is the documented baseline only.
 `git diff <merge-base> upstream/main -- inngest/functions/campaigns/send-step.ts lib/prisma-base.ts lib/auth.ts proxy.ts`
 and re-read the merged handler bodies, not just the conflicts.
 
+---
+
+## fix/ci-push-main — restore CI on push to main (QA deploys had stopped)  (PR: TBD)
+
+After the v0.36 sync, merges to `main` stopped reaching QA. Upstream changed `ci.yml`'s push trigger
+to `branches: [dev]` (its PR-only model: "the PR run already tested exactly what lands"). That merged
+in cleanly, but the fork's `advance-qa.yml` fires on a **successful push-to-main CI run**
+(`workflow_run`, `event == push`). With no push run there was no `advance-qa`, so `qa` stayed on
+PR #60. PR #61 never reached QA, and neither would anything merged after it.
+
+| Upstream file | +/− | Insert-only? | What / where | Risk |
+|---|---|---|---|---|
+| `.github/workflows/ci.yml` | +4/−1 | **one-line rewrite** + comment | `on.push.branches: [dev]` → `[dev, main]`, with a fork comment explaining the advance-qa dependency. | **High next sync.** Upstream deliberately removed `main`, so expect it to come back as a conflict or a clean-merge regression. Now guarded (below). |
+
+Fork-owned: `scripts/check-invariants.sh` gains check 7, which **FAILs** Guardrails when `ci.yml`'s
+push trigger no longer includes `main` (revert-verified against upstream's `[dev]`).
+
+**Re-verify after any upstream merge:** `bash scripts/check-invariants.sh` passes, and after the
+merge lands, `gh run list --workflow advance-qa.yml` shows a run for the merge commit.
+

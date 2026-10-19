@@ -270,7 +270,11 @@
   logging as best-effort, so it failed **silently**, and only the E2E persistence check
   caught it. When upstream adds an allow-list or `Record<entityType, …>`, grep the fork for
   its own entity types (`"target"`) and add them. A third instance: upstream dropped
-  `NEXTAUTH_URL` from `ci.yml`'s env, which the fork's send core needs.
+  `NEXTAUTH_URL` from `ci.yml`'s env, which the fork's send core needs. A **fourth**, found only
+  after the merge landed: upstream changed `ci.yml`'s push trigger to `[dev]`, so CI stopped
+  running on `main` pushes and `advance-qa` (which listens for that run) never fired, which
+  quietly froze QA. Now guarded by `check-invariants.sh` check 7. After every sync, confirm
+  the merge commit produced an `advance-qa` run.
 - **Related trap — code that moves:** upstream moved the Prisma client from `lib/prisma.ts`
   into `lib/prisma-base.ts`. "Take theirs" on `lib/prisma.ts` looked right, but it would
   have dropped the fork's pool cap and idle-error handler without a trace. When upstream
@@ -288,6 +292,25 @@
 - **Fix / rule:** the fork enables `cookieCache` for 60s (`lib/auth-session-cache.ts`).
   When upstream adds a per-request auth lookup in middleware, check whether it hits the DB.
   The trade-off: deactivation and role changes take up to `maxAge` to reach a signed-in browser.
+
+## Vercel / hosting
+
+### Transferring a Vercel project to another team orphans its Marketplace integrations
+
+- **Symptom:** after `nextcrm-app` moved from team `radeio` to `rade-engineering`, QA campaigns
+  hung on "sending" with no send records. QA logs showed `Inngest API Error: 401 Cannot send
+  events to an archived environment` on every `inngest.send`. The Inngest integration was
+  nowhere to be seen on the new team, yet the `INNGEST_*` variables were all still set.
+- **Cause:** Marketplace integrations are installed **per team**. The transfer copied the
+  integration-managed variables into the project as plain variables, but left the integration
+  installed on the old team (linked to zero projects). Inngest's side then archived the branch
+  environment QA's `INNGEST_ENV` pointed at, and new deploys stopped syncing.
+- **Fix / rule:** after any project transfer, re-install every Marketplace integration on the
+  **new** team and reconnect the project. Delete the copied variables first, because an
+  integration can't create a key that already exists. Re-check deployment-protection bypass so
+  the provider can still reach Preview, redeploy, then uninstall the old team's copy.
+- **Tell:** `vercel api "/v1/integrations/configurations?view=account" --scope <old-team>` shows
+  the integration with `"projects":[]`, and the new team lists none.
 
 ## Database / migrations
 

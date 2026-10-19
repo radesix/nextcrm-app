@@ -5,7 +5,10 @@ name: CI
 # built and deployed only on a release (release-please.yml).
 on:
   push:
-    branches: [dev]
+    # fork: main is required. advance-qa.yml fires on a successful push-to-main CI
+    # run (workflow_run, event == push), so without it no merge reaches QA.
+    # Upstream v0.36 dropped main (see the note above), which silently stopped QA deploys.
+    branches: [dev, main]
   pull_request:
     branches: [dev, main]
 
