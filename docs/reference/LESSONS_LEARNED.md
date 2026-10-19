@@ -264,6 +264,13 @@
   `UPSTREAM_IMPACT_LOG.md` list), conflicted or not, and re-read the merged result. Lock
   important fork behavior with a test that fails if it regresses
   (`__tests__/campaigns/campaign-sender-key.test.ts`), so the next sync can't undo it quietly.
+- **Second instance in the same sync — allow-lists that don't know fork types:** upstream
+  added a per-entity write check to `createActivity` whose map knew only upstream's entity
+  types, so the fork's `target` links became "Forbidden". The fork's caller treats activity
+  logging as best-effort, so it failed **silently**, and only the E2E persistence check
+  caught it. When upstream adds an allow-list or `Record<entityType, …>`, grep the fork for
+  its own entity types (`"target"`) and add them. A third instance: upstream dropped
+  `NEXTAUTH_URL` from `ci.yml`'s env, which the fork's send core needs.
 - **Related trap — code that moves:** upstream moved the Prisma client from `lib/prisma.ts`
   into `lib/prisma-base.ts`. "Take theirs" on `lib/prisma.ts` looked right, but it would
   have dropped the fork's pool cap and idle-error handler without a trace. When upstream

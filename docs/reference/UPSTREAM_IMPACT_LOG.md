@@ -1011,6 +1011,7 @@ and the resolution choice.
 | `.gitignore` | +4/−2 | Union. | Low |
 | `lib/__tests__/partner-routes.test.ts` | +2/−1 | Added the fork's `prompts` label to upstream's campaigns-menu fixture (type break). | Low |
 | `prisma/schema.prisma` | +203/−0 | Both sides appended models at the same place: kept both and restored the shared closing brace. | Low |
+| `actions/crm/activities/create-activity.ts` | +3/−0 | **Clean-merge regression, caught by E2E:** upstream's new per-entity write check (`ASSERT_CAN_WRITE`, cb52f2a8) refused any type outside its map, so linking an activity to the fork's `target` returned "Forbidden" and outreach sends silently lost their timeline entry. Inserted `target: assertCanWriteTarget`, which keeps the scope check. Guarded by `actions/crm/activities/__tests__/create-activity-target-link.test.ts` and `tests/e2e/target-ai-email.spec.ts`. | Medium (upstream may extend this map) |
 | `.github/workflows/ci.yml` | +3/−0 (this sync) | **Clean-merge regression, caught by CI:** upstream dropped `NEXTAUTH_URL` from the job env, so the fork's fail-closed send core (`MISSING_BASE_URL_MESSAGE`) failed 5 unit tests. Restored with a fork comment. | Medium (upstream may keep editing this env block) |
 
 Fork-owned files changed: `lib/auth-session-cache.ts` (new), `lib/__tests__/prisma.test.ts`,

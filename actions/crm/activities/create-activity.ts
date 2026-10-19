@@ -6,6 +6,7 @@ import {
   assertCanWriteContract,
   assertCanWriteLead,
   assertCanWriteOpportunity,
+  assertCanWriteTarget,
   assertPartnerCanLinkActivity,
   requireAuthenticated,
   AuthorizationError,
@@ -30,6 +31,8 @@ const ASSERT_CAN_WRITE: Record<string, (user: AuthzUser, id: string) => Promise<
   lead: assertCanWriteLead,
   opportunity: assertCanWriteOpportunity,
   contract: assertCanWriteContract,
+  // fork: outreach emails log an activity on the fork's `target` entity
+  target: assertCanWriteTarget,
 };
 
 export const createActivity = async (data: {
