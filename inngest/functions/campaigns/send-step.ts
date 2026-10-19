@@ -5,6 +5,8 @@ import { resolveMergeTags } from "@/lib/campaigns/merge-tags";
 import { renderCampaignEmail } from "@/lib/campaigns/render-email";
 import { sendStepSkipReason } from "@/lib/campaigns/recipient-filters";
 import { redirectRecipients } from "@/lib/email/redirect";
+// fork: campaign "sending" -> "sent" once step 0 is done
+import { markCampaignSentIfComplete, onCampaignSendStepFailure } from "@/lib/campaigns/campaign-recipients";
 
 // Campaigns use a dedicated Resend key (domain-restricted to the campaigns sending
 // domain, tracking on) — segregated from the transactional key (RESEND_API_KEY, via
@@ -18,6 +20,8 @@ export const campaignSendStep = inngest.createFunction(
     id: "campaign-send-step",
     name: "Campaign: Send Step",
     triggers: [{ event: "campaigns/send-step" }],
+    // fork: retries exhausted -> mark the send failed so the campaign can still complete
+    onFailure: onCampaignSendStepFailure,
   },
   async ({ event, step }) => {
     const { sendId, campaignId } = event.data as {
@@ -94,6 +98,9 @@ export const campaignSendStep = inngest.createFunction(
         },
       });
     });
+
+    // fork: the last step-0 send to finish completes the campaign
+    await step.run("mark-sent-if-complete", () => markCampaignSentIfComplete(campaignId));
 
     return { sent: !result.error };
   }

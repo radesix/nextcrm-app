@@ -135,6 +135,30 @@
   conditional class) over an arbitrary `data-[…]` variant. **Verify a rule exists by
   reading computed style**, not by eyeballing the class in the markup.
 
+## Email recipients / suppression
+
+### A target has three email fields: sending, de-duplicating and suppressing must all use the same ones
+
+- **Symptom:** in QA, a "Send now" campaign sat on **"sending"** forever and no email went out,
+  even though its one target had a company email address.
+- **Cause:** campaigns picked recipients from `crm_Targets.email` only, while one-off outreach
+  already used `resolveTargetRecipient` (`email` → `company_email` → `personal_email`). The
+  target was dropped, zero sends were created, and because nothing ever moved a campaign to
+  `"sent"` its status never changed. Widening the recipient chain then exposed a second gap:
+  the unsubscribe route's email-wide suppression only matched `email`, so other targets
+  reachable at the same company address stayed subscribed.
+- **Fix / rule:** resolve campaign recipients through `resolveCampaignRecipients`
+  (`lib/campaigns/campaign-recipients.ts`), which wraps the shared chain. **Whenever you widen
+  which field a send can go to, widen suppression to the same fields in the same change**
+  (`app/api/campaigns/unsubscribe/route.ts` now matches all three). A status lifecycle also
+  needs its terminal transition: `markCampaignSentIfComplete` is the `sending → sent` step,
+  guarded on `status: "sending"` so it's idempotent and never flips a paused campaign.
+  Every path out of "queued" has to be covered, including Inngest exhausting a function's
+  retries: send-step's `onFailure` (`onCampaignSendStepFailure`) marks the send `failed`.
+  Without it, one send that keeps throwing would pin the campaign on "sending" again.
+- **Tell:** a campaign on "sending" with **no** `crm_campaign_sends` rows had zero resolved
+  recipients. Check the targets' three email fields and `do_not_email`.
+
 ## Robustness
 
 ### A "never throws" reporter can still throw if its SDK is uninitialized

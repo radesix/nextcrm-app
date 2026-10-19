@@ -43,6 +43,9 @@ describe("unsubscribe global opt-out", () => {
         OR: [
           { id: "t-1" },
           { email: { equals: "jane@acme.com", mode: "insensitive" } },
+          // fork: fallback address fields (see unsubscribe-fallback-addresses.test.ts)
+          { company_email: { equals: "jane@acme.com", mode: "insensitive" } },
+          { personal_email: { equals: "jane@acme.com", mode: "insensitive" } },
         ],
       },
       data: { do_not_email: true, do_not_email_at: expect.any(Date) },
@@ -99,6 +102,9 @@ describe("unsubscribe global opt-out", () => {
         OR: [
           { id: "t-1" },
           { email: { equals: "Jane@Acme.COM", mode: "insensitive" } },
+          // fork: fallback address fields (see unsubscribe-fallback-addresses.test.ts)
+          { company_email: { equals: "Jane@Acme.COM", mode: "insensitive" } },
+          { personal_email: { equals: "Jane@Acme.COM", mode: "insensitive" } },
         ],
       },
       data: { do_not_email: true, do_not_email_at: expect.any(Date) },

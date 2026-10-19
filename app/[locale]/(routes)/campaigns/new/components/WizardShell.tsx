@@ -97,7 +97,9 @@ export function WizardShell({
       }
 
       if (merged.send_now) {
-        await sendCampaignNow(campaign.id);
+        // fork: surface the action's {error} (e.g. no recipients) instead of dropping it
+        const sent = await sendCampaignNow(campaign.id);
+        if (sent && "error" in sent) toast.error(String(sent.error));
       } else if (merged.scheduled_at) {
         await scheduleCampaign(campaign.id, merged.scheduled_at);
       }

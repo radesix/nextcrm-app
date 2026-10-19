@@ -7,6 +7,8 @@ import {
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/authz";
+// fork: refuse to send with no recipients (see lib/campaigns/campaign-recipients.ts)
+import { resolveCampaignRecipients, NO_RECIPIENTS_ERROR } from "@/lib/campaigns/campaign-recipients";
 
 export const sendCampaignNow = async (id: string) => {
   let user;
@@ -24,6 +26,9 @@ export const sendCampaignNow = async (id: string) => {
     if (e instanceof AuthorizationError) return { error: "Not found" };
     throw e;
   }
+
+  // fork: no-recipient guard
+  if ((await resolveCampaignRecipients(id)).length === 0) return { error: NO_RECIPIENTS_ERROR };
 
   const now = new Date();
   await prismadb.crm_campaigns.update({

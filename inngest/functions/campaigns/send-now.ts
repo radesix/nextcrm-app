@@ -1,7 +1,8 @@
 import { inngest } from "@/inngest/client";
 import { prismadb } from "@/lib/prisma";
 import { randomUUID } from "crypto";
-import { subscribedTargetsInclude } from "@/lib/campaigns/recipient-filters";
+// fork: was subscribedTargetsInclude (email-only); see lib/campaigns/campaign-recipients.ts
+import { resolveCampaignRecipients, markCampaignSentIfComplete } from "@/lib/campaigns/campaign-recipients";
 
 // Same logic as schedule-send but without sleepUntil
 export const campaignSendNow = inngest.createFunction(
@@ -18,23 +19,8 @@ export const campaignSendNow = inngest.createFunction(
     });
     if (!step0) return { skipped: true, reason: "no step 0" };
 
-    const targets = await step.run("resolve-recipients", async () => {
-      const lists = await prismadb.crm_TargetLists.findMany({
-        where: { campaign_lists: { some: { campaign_id: campaignId } } },
-        include: subscribedTargetsInclude(),
-      });
-      const seen = new Set<string>();
-      const unique: Array<{ id: string; email: string }> = [];
-      for (const list of lists) {
-        for (const t of list.targets) {
-          if (t.target.email && !seen.has(t.target.email)) {
-            seen.add(t.target.email);
-            unique.push({ id: t.target.id, email: t.target.email });
-          }
-        }
-      }
-      return unique;
-    });
+    // fork: shared resolver adds the company/personal email fallback
+    const targets = await step.run("resolve-recipients", async () => resolveCampaignRecipients(campaignId));
 
     const sendRecords = await step.run("create-and-fan-out", async () => {
       await prismadb.crm_campaign_sends.createMany({
@@ -83,6 +69,9 @@ export const campaignSendNow = inngest.createFunction(
         }))
       );
     }
+
+    // fork: covers an audience where every send is skipped (no send-step will complete it)
+    await step.run("mark-sent-if-complete", () => markCampaignSentIfComplete(campaignId));
 
     return { dispatched: sendRecords.length, followUps: followUpSteps.length };
   }

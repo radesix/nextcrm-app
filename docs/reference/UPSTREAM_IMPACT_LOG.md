@@ -943,3 +943,41 @@ file** touched.
 green. Its third case checks that `TipTapEditor.tsx` still passes `getPlainEditorJson(editor)`
 to `onChange`. Upstream has the same bug, so this fix is a good candidate to contribute back.
 
+---
+
+## fix/campaign-send-completion — campaign recipient fallback, no-recipient guard, sending→sent  (PR: TBD)
+
+Campaigns resolved recipients from `target.email` only, so targets with only a company or personal
+email were dropped. With no recipients at all, a campaign sat on "sending" forever, because nothing
+ever moved a campaign to "sent". The new fork file `lib/campaigns/campaign-recipients.ts` holds
+all the logic (`resolveCampaignRecipients`, `NO_RECIPIENTS_ERROR`, `markCampaignSentIfComplete`).
+**8 upstream-owned files** are touched, all with thin hooks:
+
+| Upstream file | +/− | Insert-only? | What / where | Risk |
+|---|---|---|---|---|
+| `inngest/functions/campaigns/send-now.ts` | +7/−18 | **rewrite (one block)** | The `resolve-recipients` step body (inline list loop using `subscribedTargetsInclude`) is replaced by `resolveCampaignRecipients(campaignId)`. The import swaps `subscribedTargetsInclude` for the fork helpers. Inserted a `mark-sent-if-complete` step before the final `return`. | Medium (on conflict, take upstream's loop and re-replace the step body; keep the end step) |
+| `inngest/functions/campaigns/schedule-send.ts` | +6/−21 | **rewrite (one block)** | Same `resolve-recipients` swap and import swap. `mark-sent-if-complete` inserted **after** the final `status: "sending"` update (order matters; guarded by a wiring test). | Medium (same recipe) |
+| `inngest/functions/campaigns/send-step.ts` | +7/−0 | insert-only | Import of `markCampaignSentIfComplete` + `onCampaignSendStepFailure`. A `mark-sent-if-complete` step after `update-send-record`. An `onFailure: onCampaignSendStepFailure` line in the function config (retries exhausted: mark the still-queued send `failed`, then re-check completion). | Low |
+| `actions/campaigns/send-campaign-now.ts` | +5/−0 | insert-only | Import plus the no-recipient guard after the authz block (returns `{ error: NO_RECIPIENTS_ERROR }`). | Low |
+| `lib/mcp/tools/campaigns.ts` | +4/−0 | insert-only | Import plus the same guard in `campaigns_send` (`conflict(NO_RECIPIENTS_ERROR)`). | Low |
+| `app/[locale]/(routes)/campaigns/new/components/WizardShell.tsx` | +3/−1 | near insert-only | `await sendCampaignNow(...)` now keeps its result and toasts `{error}` (it was silently dropped before). | Low |
+| `app/api/campaigns/unsubscribe/route.ts` | +3/−0 | insert-only | Global-suppression `OR` gains `company_email` and `personal_email` (case-insensitive) next to `email`. | Low |
+| `actions/campaigns/__tests__/send-campaign-now-scope.test.ts` | +5/−0 | insert-only | Mocks `resolveCampaignRecipients` with one recipient so the existing scope cases still reach the send. | Low |
+| `__tests__/campaigns/api/unsubscribe-global-optout.test.ts` | +6/−0 | insert-only | Two exact-`OR` expectations gain the two new address entries. | Low |
+
+`lib/campaigns/recipient-filters.ts` is **unchanged**. `subscribedTargetsInclude` is now unused
+outside its own test, but it's kept to avoid divergence from upstream.
+
+**Known gaps (deferred):**
+- The campaign shows "sent" once step 0 finishes, even while follow-up steps are pending.
+  Follow-ups still go out, and the web Pause action still works, but MCP `campaigns_pause`
+  refuses a "sent" campaign.
+- Scheduling a campaign doesn't check for recipients (only "Send now" does). With zero
+  recipients, a scheduled campaign moves to "sent" at its send time.
+
+**Re-verify after any upstream merge:** `__tests__/campaigns/campaign-recipients*.test.ts`,
+`__tests__/campaigns/send-campaign-now-recipients.test.ts`,
+`__tests__/campaigns/campaign-send-failure.test.ts` and
+`__tests__/campaigns/api/unsubscribe-*.test.ts` stay green. If upstream changes the
+`resolve-recipients` step shape, the wiring test fails and points at it.
+
