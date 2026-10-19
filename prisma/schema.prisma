@@ -46,6 +46,8 @@ model crm_Accounts {
   website              String?
   deletedAt            DateTime?
   deletedBy            String?   @db.Uuid
+  /// External partner (role partner) who looks after this account; one per account.
+  partnerUserId        String?   @db.Uuid
 
   contacts           crm_Contacts[]
   leads              crm_Leads[]
@@ -53,6 +55,8 @@ model crm_Accounts {
   industry_type      crm_Industry_Type?    @relation(fields: [industry], references: [id])
   opportunities      crm_Opportunities[]
   assigned_to_user   Users?                @relation("AccountAssignedTo", fields: [assigned_to], references: [id])
+  partner_user       Users?                @relation("AccountPartner", fields: [partnerUserId], references: [id], onDelete: SetNull)
+  partner_own_users  Users[]               @relation("PartnerOwnAccount")
   crm_accounts_tasks crm_Accounts_Tasks[]
   contracts          crm_Contracts[]
   documents          DocumentsToAccounts[]
@@ -61,8 +65,10 @@ model crm_Accounts {
   emails             EmailsToAccounts[]
   accountProducts    crm_AccountProducts[]
   invoices           Invoices[]
+  orders crm_Orders[]
 
   @@index([assigned_to])
+  @@index([partnerUserId])
   @@index([industry])
   @@index([createdBy])
   @@index([updatedBy])
@@ -70,6 +76,10 @@ model crm_Accounts {
   @@index([type])
   @@index([createdAt])
   @@index([deletedAt])
+  pricelist_id String?         @db.Uuid
+  pricelist    crm_PriceLists? @relation(fields: [pricelist_id], references: [id], onDelete: SetNull)
+
+  @@index([pricelist_id])
 }
 
 model crm_Leads {
@@ -194,6 +204,14 @@ enum crm_AuditLog_Action {
   restored
   relation_added
   relation_removed
+  installed
+  uninstalled
+  enabled
+  disabled
+  settings_changed
+  upgraded
+  imported
+  cancelled
 }
 
 // Outbound-prospect triage: the pre-conversion review gate on a Target.
@@ -305,6 +323,11 @@ enum crm_Product_Status {
   DRAFT
   ACTIVE
   ARCHIVED
+}
+
+enum crm_Product_Source {
+  CRM
+  EXTERNAL
 }
 
 enum crm_Billing_Period {
@@ -450,7 +473,7 @@ model crm_Opportunities_Sales_Stages {
 }
 
 /// Instance-grade funnel timing settings (singleton row). Defaults are the
-/// AQUNAMA spec values; edited at Admin -> Funnel settings.
+/// recommended funnel values; edited at Admin -> Funnel settings.
 model crm_FunnelSettings {
   id                           String    @id @default(uuid()) @db.Uuid
   kill_after_days              Int       @default(45)
@@ -561,6 +584,7 @@ model crm_Contacts {
   target_contact_links  crm_Target_Contact[]     @relation("target_contact_link")
   deletedAt             DateTime?
   deletedBy             String?   @db.Uuid
+  orders crm_Orders[]
 
   @@index([assigned_to])
   @@index([accountsIDs])
@@ -641,6 +665,8 @@ model Currency {
   products        crm_Products[]
   accountProducts crm_AccountProducts[]
   invoices        Invoices[]          @relation("InvoiceCurrency")
+  priceLists crm_PriceLists[]
+  orders crm_Orders[]
 }
 
 model ExchangeRate {
@@ -672,6 +698,7 @@ enum crm_Activity_Type {
   meeting
   note
   email
+  visit
 }
 
 enum crm_Activity_Status {
@@ -1009,6 +1036,7 @@ enum AppRole {
   user
   manager
   admin
+  partner
 }
 
 model Users {
@@ -1031,6 +1059,9 @@ model Users {
   banned           Boolean      @default(false)
   banReason        String?
   banExpires       DateTime?
+  /// Role partner only: the partner's own company account (read-only for him).
+  partnerAccountId String?      @db.Uuid
+  partnerAccount   crm_Accounts? @relation("PartnerOwnAccount", fields: [partnerAccountId], references: [id], onDelete: SetNull)
 
   tasksComment         tasksComments[]
   created_by_documents Documents[]           @relation("created_by_user")
@@ -1038,6 +1069,7 @@ model Users {
   tasks                Tasks[]
   crm_accounts_tasks   crm_Accounts_Tasks[]
   accounts             crm_Accounts[]        @relation("AccountAssignedTo")
+  partner_accounts     crm_Accounts[]        @relation("AccountPartner")
   leads                crm_Leads[]           @relation("LeadAssignedTo")
   created_by_user      crm_Opportunities[]   @relation("created_by_user_relation")
   assigned_opportunity crm_Opportunities[]   @relation("assigned_to_user_relation")
@@ -1070,11 +1102,13 @@ model Users {
   invoicePayments              Invoice_Payments[]    @relation("InvoicePaymentCreatedBy")
   invoiceAttachments           Invoice_Attachments[] @relation("InvoiceAttachmentUploadedBy")
   invoiceActivity              Invoice_Activity[]    @relation("InvoiceActivityActor")
+  ordersOwned crm_Orders[] @relation("OrderOwner")
 
   @@index([email])
   @@index([userStatus])
   @@index([userLanguage])
   @@index([role])
+  @@index([partnerAccountId])
   @@index([created_on])
   @@index([lastLoginAt])
 }
@@ -1082,7 +1116,7 @@ model Users {
 model crm_AuditLog {
   id         String    @id @default(uuid()) @db.Uuid
   entityType String
-  entityId   String    @db.Uuid
+  entityId   String
   action     crm_AuditLog_Action
   changes    Json?     @db.JsonB
   userId     String?   @db.Uuid
@@ -1597,7 +1631,7 @@ model EmailEmbedding {
 }
 
 // ============================================
-// CALENDAR SYNC (AQUNAMA Phase 4)
+// CALENDAR SYNC
 // ============================================
 
 enum CalendarProvider {
@@ -1730,15 +1764,23 @@ model crm_ProductCategories {
   description String?
   order       Int      @default(0)
   isActive    Boolean  @default(true)
+  source      crm_Product_Source @default(CRM)
+  externalRef String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  createdBy String    @db.Uuid
+  createdBy String?   @db.Uuid
   updatedBy String?   @db.Uuid
 
   products crm_Products[]
 
   @@index([isActive])
+  parentId   String?                 @db.Uuid
+  parent     crm_ProductCategories?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children   crm_ProductCategories[] @relation("CategoryTree")
+  priceRules crm_PriceListRules[]
+
+  @@unique([source, externalRef])
 }
 
 model crm_Products {
@@ -1759,10 +1801,13 @@ model crm_Products {
 
   categoryId String? @db.Uuid
 
+  source      crm_Product_Source @default(CRM)
+  externalRef String?
+
   v         Int       @default(0) @map("__v")
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  createdBy String    @db.Uuid
+  createdBy String?   @db.Uuid
   updatedBy String?   @db.Uuid
   deletedAt DateTime?
   deletedBy String?   @db.Uuid
@@ -1774,12 +1819,16 @@ model crm_Products {
   opportunityLineItems crm_OpportunityLineItems[]
   contractLineItems    crm_ContractLineItems[]
   invoiceLineItems     Invoice_LineItems[]
+  orderLines crm_OrderLines[]
 
   @@index([status])
   @@index([type])
   @@index([categoryId])
   @@index([createdBy])
   @@index([deletedAt])
+  priceRules crm_PriceListRules[]
+
+  @@unique([source, externalRef])
 }
 
 model crm_AccountProducts {
@@ -2217,4 +2266,236 @@ model crm_Target_Homepage_Version {
   homepage crm_Target_Homepage @relation(fields: [homepage_id], references: [id], onDelete: Cascade)
 
   @@index([homepage_id, created_at])
+}
+
+enum PluginStatus {
+  ENABLED
+  DISABLED
+}
+
+model InstalledPlugin {
+  id          String       @id
+  version     String
+  status      PluginStatus @default(ENABLED)
+  settings    Json         @default("{}")
+  secrets     String?
+  installedAt DateTime     @default(now())
+  installedBy String?      @db.Uuid
+  updatedAt   DateTime     @updatedAt
+}
+
+model PluginData {
+  id         String   @id @default(uuid()) @db.Uuid
+  pluginId   String
+  entityType String   @default("")
+  entityId   String   @default("")
+  key        String
+  value      Json
+  updatedAt  DateTime @updatedAt
+
+  @@unique([pluginId, entityType, entityId, key])
+  @@index([pluginId, key])
+  @@index([entityType, entityId])
+}
+
+model PluginLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  pluginId  String
+  level     String
+  message   String
+  context   Json?
+  createdAt DateTime @default(now())
+
+  @@index([pluginId, createdAt])
+}
+
+enum crm_PriceList_Source {
+  CRM
+  EXTERNAL
+}
+
+enum crm_PriceRule_Target {
+  ALL
+  CATEGORY
+  PRODUCT
+}
+
+enum crm_PriceRule_Compute {
+  FIXED
+  PERCENTAGE
+  FORMULA
+}
+
+enum crm_PriceRule_Base {
+  LIST_PRICE
+  COST
+  PRICE_LIST
+}
+
+model crm_PriceLists {
+  id          String               @id @default(uuid()) @db.Uuid
+  name        String
+  currency    String               @db.VarChar(3)
+  isActive    Boolean              @default(true)
+  source      crm_PriceList_Source @default(CRM)
+  externalRef String?
+  createdBy   String?              @db.Uuid
+  updatedBy   String?              @db.Uuid
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  assigned_currency Currency             @relation(fields: [currency], references: [code])
+  rules             crm_PriceListRules[] @relation("PriceListRules")
+  baseFor           crm_PriceListRules[] @relation("PriceListRuleBase")
+  accounts          crm_Accounts[]
+  orders crm_Orders[]
+
+  @@unique([source, externalRef])
+  @@index([isActive])
+}
+
+model crm_PriceListRules {
+  id              String                @id @default(uuid()) @db.Uuid
+  priceListId     String                @db.Uuid
+  appliesTo       crm_PriceRule_Target  @default(ALL)
+  categoryId      String?               @db.Uuid
+  productId       String?               @db.Uuid
+  minQuantity     Decimal               @default(0) @db.Decimal(14, 4)
+  dateStart       DateTime?
+  dateEnd         DateTime?
+  computePrice    crm_PriceRule_Compute @default(FIXED)
+  fixedPrice      Decimal?              @db.Decimal(18, 4)
+  percentPrice    Decimal?              @db.Decimal(7, 4)
+  base            crm_PriceRule_Base    @default(LIST_PRICE)
+  basePriceListId String?               @db.Uuid
+  priceDiscount   Decimal               @default(0) @db.Decimal(7, 4)
+  priceSurcharge  Decimal               @default(0) @db.Decimal(18, 4)
+  priceRound      Decimal?              @db.Decimal(18, 4)
+  priceMinMargin  Decimal?              @db.Decimal(18, 4)
+  priceMaxMargin  Decimal?              @db.Decimal(18, 4)
+  externalRef     String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  priceList     crm_PriceLists         @relation("PriceListRules", fields: [priceListId], references: [id], onDelete: Cascade)
+  basePriceList crm_PriceLists?        @relation("PriceListRuleBase", fields: [basePriceListId], references: [id], onDelete: Restrict)
+  category      crm_ProductCategories? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  product       crm_Products?          @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([priceListId, appliesTo])
+  @@index([basePriceListId])
+}
+
+enum crm_Order_Status {
+  DRAFT
+  PENDING_APPROVAL
+  READY
+  SENT
+  CONFIRMED
+  DELIVERED
+  INVOICED
+  PAID
+  CANCELLED
+  SYNC_FAILED
+}
+
+enum crm_Order_Source {
+  CRM
+  EXTERNAL
+}
+
+enum NumberSeries_Reset {
+  YEARLY
+  NEVER
+}
+
+model NumberSeries {
+  id          String             @id @default(uuid()) @db.Uuid
+  scope       String
+  name        String
+  template    String
+  resetPolicy NumberSeries_Reset @default(YEARLY)
+  currentYear Int?
+  counter     Int                @default(0)
+  isDefault   Boolean            @default(false)
+  active      Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  orders crm_Orders[]
+
+  @@index([scope, isDefault])
+}
+
+model crm_Orders {
+  id                    String           @id @default(uuid()) @db.Uuid
+  number                String           @unique
+  seriesId              String           @db.Uuid
+  status                crm_Order_Status @default(DRAFT)
+  source                crm_Order_Source @default(CRM)
+  externalRef           String?
+  accountId             String           @db.Uuid
+  contactId             String?          @db.Uuid
+  ownerId               String?          @db.Uuid
+  priceListId           String?          @db.Uuid
+  currency              String           @db.VarChar(3)
+  orderDate             DateTime         @default(now()) @db.Date
+  shipping_street       String?
+  shipping_city         String?
+  shipping_state        String?
+  shipping_postal_code  String?
+  shipping_country      String?
+  requestedDeliveryDate DateTime?        @db.Date
+  note                  String?
+  subtotal              Decimal          @default(0) @db.Decimal(14, 2)
+  vatTotal              Decimal          @default(0) @db.Decimal(14, 2)
+  grandTotal            Decimal          @default(0) @db.Decimal(14, 2)
+  approvalRequestedAt   DateTime?
+  approvedAt            DateTime?
+  approvedBy            String?          @db.Uuid
+  approvalNote          String?
+  createdBy             String?          @db.Uuid
+  updatedBy             String?          @db.Uuid
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  series            NumberSeries    @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  account           crm_Accounts    @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  contact           crm_Contacts?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  owner             Users?          @relation("OrderOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  priceList         crm_PriceLists? @relation(fields: [priceListId], references: [id], onDelete: SetNull)
+  assigned_currency Currency        @relation(fields: [currency], references: [code], onDelete: Restrict)
+  lines             crm_OrderLines[]
+
+  @@unique([source, externalRef])
+  @@index([accountId])
+  @@index([ownerId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([accountId, orderDate])
+}
+
+model crm_OrderLines {
+  id                  String  @id @default(uuid()) @db.Uuid
+  orderId             String  @db.Uuid
+  position            Int
+  productId           String  @db.Uuid
+  productName         String
+  sku                 String?
+  unit                String?
+  quantity            Decimal @db.Decimal(14, 4)
+  listPrice           Decimal @db.Decimal(18, 2)
+  priceRuleId         String?
+  unitPrice           Decimal @db.Decimal(18, 2)
+  unitPriceOverridden Boolean @default(false)
+  vatRate             Decimal @default(0) @db.Decimal(5, 2)
+  lineSubtotal        Decimal @db.Decimal(14, 2)
+  lineVat             Decimal @db.Decimal(14, 2)
+  lineTotal           Decimal @db.Decimal(14, 2)
+
+  order   crm_Orders   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product crm_Products @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
 }

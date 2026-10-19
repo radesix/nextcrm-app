@@ -2,7 +2,12 @@ import Container from "@/app/[locale]/(routes)/components/ui/Container";
 import React from "react";
 import { BasicView } from "./components/BasicView";
 import CaseStudyCard from "./components/CaseStudyCard";
+import AccountPartnerCard from "./components/AccountPartnerCard";
+import { getPartnerUsers } from "@/actions/crm/accounts/get-partner-users";
 import { getSession } from "@/lib/auth-server";
+import { requireAuthenticated, isManagerOrAdmin } from "@/lib/authz";
+import { getAccountTabs, getAccountPanels } from "@/lib/plugins/slots";
+import { PluginSlot } from "@/lib/plugins/ui/PluginSlot";
 import { FindSimilarButton } from "@/components/crm/find-similar-button";
 
 import { getAccount } from "@/actions/crm/get-account";
@@ -41,6 +46,7 @@ import AccountProductsView from "./components/AccountProductsView";
 import { ActivitiesSection } from "./components/ActivitiesSection";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HistoryTab } from "./components/HistoryTab";
+import { AccountOrdersTab } from "./components/AccountOrdersTab";
 
 interface AccountDetailPageProps {
   params: Promise<{
@@ -51,8 +57,11 @@ interface AccountDetailPageProps {
 const AccountDetailPage = async (props: AccountDetailPageProps) => {
   const params = await props.params;
   const { accountId } = params;
-  const session = await getSession();
+  const session = await getSession({ partner: true });
   const sessionUserRole = (session?.user as any)?.role ?? "user";
+  const actorUser = await requireAuthenticated({ partner: true });
+  const actor = { type: "user" as const, userId: actorUser.id, role: actorUser.role };
+  const [pluginTabs, pluginPanels] = await Promise.all([getAccountTabs(actorUser.role), getAccountPanels(actorUser.role)]);
   const account: crm_Accounts | null = await getAccount(accountId);
   const opportunities: crm_Opportunities[] = serializeDecimalsList(
     await getOpportunitiesFullByAccountId(accountId)
@@ -66,6 +75,7 @@ const AccountDetailPage = async (props: AccountDetailPageProps) => {
   const tasks: crm_Accounts_Tasks[] = await getAccountsTasks(accountId);
   const invoices = await getInvoicesByAccountId(accountId);
   const t = await getTranslations("InvoicesPage");
+  const to = await getTranslations("OrdersPage");
   const invoiceStatusLabels: Record<string, string> = {
     DRAFT: t("status.DRAFT"),
     ISSUED: t("status.ISSUED"),
@@ -93,6 +103,8 @@ const AccountDetailPage = async (props: AccountDetailPageProps) => {
     await getAccountProducts(accountId)
   );
   const allProducts = await getProductsFull();
+  const canSetPartner = isManagerOrAdmin(actorUser);
+  const partners = canSetPartner ? await getPartnerUsers() : [];
   const activeProducts = allProducts
     .filter((p) => p.status === "ACTIVE")
     .map((p) => ({ id: p.id, name: p.name, currency: p.currency }));
@@ -108,10 +120,18 @@ const AccountDetailPage = async (props: AccountDetailPageProps) => {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="orders">{to("ordersTab")}</TabsTrigger>
+          {await Promise.all(pluginTabs.map(async ({ plugin, tab }) => {
+            const tp = await getTranslations(`plugins.${plugin.definition.id}` as never);
+            return <TabsTrigger key={`${plugin.definition.id}:${tab.id}`} value={`plugin-${plugin.definition.id}-${tab.id}`}>{tp(tab.title as never)}</TabsTrigger>;
+          }))}
         </TabsList>
         <TabsContent value="overview">
           <div className="space-y-5">
             <BasicView data={account} />
+            {pluginPanels.map(({ plugin, panel }) => (
+              <PluginSlot key={`${plugin.definition.id}:${panel.id}`} plugin={plugin} actor={actor} render={(ctx) => panel.component({ accountId: account.id, ctx })} />
+            ))}
             <CaseStudyCard
               accountId={account.id}
               candidate={account.case_study_candidate}
@@ -120,6 +140,13 @@ const AccountDetailPage = async (props: AccountDetailPageProps) => {
                 sessionUserRole === "manager" || sessionUserRole === "admin"
               }
             />
+            {canSetPartner && (
+              <AccountPartnerCard
+                accountId={account.id}
+                partnerUserId={account.partnerUserId}
+                partners={partners}
+              />
+            )}
             <ActivitiesSection accountId={account.id} />
             <FindSimilarButton entityType="account" recordId={accountId} />
             <AccountsTasksView data={tasks} account={account} />
@@ -153,6 +180,14 @@ const AccountDetailPage = async (props: AccountDetailPageProps) => {
         <TabsContent value="history">
           <HistoryTab accountId={accountId} />
         </TabsContent>
+        <TabsContent value="orders">
+          <AccountOrdersTab accountId={accountId} />
+        </TabsContent>
+        {pluginTabs.map(({ plugin, tab }) => (
+          <TabsContent key={`${plugin.definition.id}:${tab.id}`} value={`plugin-${plugin.definition.id}-${tab.id}`}>
+            <PluginSlot plugin={plugin} actor={actor} render={(ctx) => tab.component({ accountId, ctx })} />
+          </TabsContent>
+        ))}
       </Tabs>
     </Container>
   );

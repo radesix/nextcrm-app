@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   requireAuthenticated,
   assertCanWriteCrmTask,
+  PARTNER_EDIT,
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/authz";
@@ -19,13 +20,13 @@ export const addComment = async (data: {
 
   let user;
   try {
-    user = await requireAuthenticated();
+    user = await requireAuthenticated({ partner: true });
   } catch (e) {
     if (e instanceof AuthenticationError) return { error: "Unauthorized" };
     throw e;
   }
   try {
-    await assertCanWriteCrmTask(user, taskId);
+    await assertCanWriteCrmTask(user, taskId, PARTNER_EDIT);
   } catch (e) {
     if (e instanceof AuthorizationError) return { error: "Forbidden" };
     throw e;

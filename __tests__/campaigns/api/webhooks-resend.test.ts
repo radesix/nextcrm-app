@@ -25,6 +25,7 @@ import { NextRequest } from "next/server";
 import { createHmac } from "crypto";
 import { prismadb } from "@/lib/prisma";
 import { POST } from "@/app/api/campaigns/webhooks/resend/route";
+import { verifyResendSignature } from "@/lib/campaigns/resend-signature";
 
 const SECRET = "whsec_dGVzdC1zdml4LXNpZ25pbmctc2VjcmV0"; // base64 payload after prefix
 

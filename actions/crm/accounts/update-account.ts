@@ -1,11 +1,13 @@
 "use server";
 import { prismadb } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { pluginRuleErrorMessage } from "@/lib/plugins/action-errors";
 import { inngest } from "@/inngest/client";
 import { writeAuditLog, diffObjects } from "@/lib/audit-log";
 import {
   requireAuthenticated,
   assertCanWriteAccount,
+  PARTNER_EDIT,
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/authz";
@@ -35,19 +37,20 @@ export const updateAccount = async (data: {
   annual_revenue?: string | null;
   member_of?: string | null;
   industry?: string;
+  pricelist_id?: string | null;
 }) => {
   const { id, ...rest } = data;
   if (!id) return { error: "id is required" };
 
   let user;
   try {
-    user = await requireAuthenticated();
+    user = await requireAuthenticated({ partner: true });
   } catch (e) {
     if (e instanceof AuthenticationError) return { error: "Unauthorized" };
     throw e;
   }
   try {
-    await assertCanWriteAccount(user, id);
+    await assertCanWriteAccount(user, id, PARTNER_EDIT);
   } catch (e) {
     if (e instanceof AuthorizationError) return { error: "Forbidden" };
     throw e;
@@ -61,6 +64,11 @@ export const updateAccount = async (data: {
         v: 0,
         updatedBy: user.id,
         ...rest,
+        ...(rest.pricelist_id === "" ? { pricelist_id: null } : {}),
+        // The partner is set only through setAccountPartner (admin/manager).
+        partnerUserId: undefined,
+        // A partner edits ordinary fields only, never the internal owner.
+        ...(user.role === "partner" ? { assigned_to: undefined } : {}),
       },
     });
     const changes = before ? diffObjects(
@@ -78,6 +86,8 @@ export const updateAccount = async (data: {
     revalidatePath("/[locale]/(routes)/crm/accounts", "page");
     return { data: account };
   } catch (error) {
+    const ruleMessage = await pluginRuleErrorMessage(error);
+    if (ruleMessage) return { error: ruleMessage };
     console.log("[UPDATE_ACCOUNT]", error);
     return { error: "Failed to update account" };
   }

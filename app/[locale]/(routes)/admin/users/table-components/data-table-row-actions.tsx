@@ -21,11 +21,14 @@ import AlertModal from "@/components/modals/alert-modal";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Copy, Edit, MoreHorizontal, Shield, Trash, UserCheck, UserX } from "lucide-react";
+import { Building2, Copy, Edit, KeyRound, MoreHorizontal, Shield, Trash, UserCheck, UserX } from "lucide-react";
 import { deleteUser } from "@/actions/admin/users/delete-user";
 import { activateUser } from "@/actions/admin/users/activate-user";
 import { deactivateUser } from "@/actions/admin/users/deactivate-user";
 import { setUserRole } from "@/actions/admin/users/set-role";
+import { revokeUserApiTokens } from "@/actions/admin/users/revoke-api-tokens";
+import type { AppRole } from "@/lib/authz";
+import { PartnerAccountDialog } from "../components/partner-account-dialog";
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>;
@@ -38,6 +41,7 @@ export function DataTableRowActions<TData>({
   const data = adminUserSchema.parse(row.original);
 
   const [open, setOpen] = useState(false);
+  const [partnerAccountOpen, setPartnerAccountOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const onCopy = (id: string) => {
@@ -97,7 +101,23 @@ export function DataTableRowActions<TData>({
     }
   };
 
-  const onSetRole = async (role: "admin" | "manager" | "user") => {
+  const onRevokeTokens = async () => {
+    try {
+      setLoading(true);
+      const result = await revokeUserApiTokens(data.id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Revoked ${result.data?.revoked ?? 0} API token(s).`);
+    } catch (error) {
+      toast.error("Something went wrong while revoking API tokens. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSetRole = async (role: AppRole) => {
     try {
       setLoading(true);
       const result = await setUserRole(data.id, role);
@@ -122,6 +142,14 @@ export function DataTableRowActions<TData>({
         onConfirm={onDelete}
         loading={loading}
       />
+      {data.role === "partner" && (
+        <PartnerAccountDialog
+          userId={data.id}
+          partnerAccountId={data.partnerAccountId ?? null}
+          open={partnerAccountOpen}
+          onOpenChange={setPartnerAccountOpen}
+        />
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant={"ghost"} className="h-8 w-8 p-0">
@@ -144,6 +172,10 @@ export function DataTableRowActions<TData>({
             <UserX className="mr-2 w-4 h-4" />
             Deactivate
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onRevokeTokens()}>
+            <KeyRound className="mr-2 w-4 h-4" />
+            Revoke API tokens
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
@@ -160,8 +192,17 @@ export function DataTableRowActions<TData>({
               <DropdownMenuItem onClick={() => onSetRole("user")}>
                 User
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onSetRole("partner")}>
+                Partner
+              </DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
+          {data.role === "partner" && (
+            <DropdownMenuItem onClick={() => setPartnerAccountOpen(true)}>
+              <Building2 className="mr-2 w-4 h-4" />
+              Partner account
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setOpen(true)}>
             <Trash className="mr-2 w-4 h-4" />

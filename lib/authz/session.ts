@@ -1,6 +1,8 @@
 import { getSession } from "@/lib/auth-server";
 import { prismadb } from "@/lib/prisma";
 import { AppRole, mapLegacyRole } from "./roles";
+
+export { isManagerOrAdmin } from "./roles";
 import { AuthenticationError, AuthorizationError } from "./errors";
 
 export interface AuthzUser {
@@ -8,8 +10,12 @@ export interface AuthzUser {
   role: AppRole;
 }
 
-export async function requireAuthenticated(): Promise<AuthzUser> {
-  const session = await getSession();
+/**
+ * The signed-in user. Refuses a partner unless the caller opts in with
+ * { partner: true } (deny by default, partner-role spec ticket 4).
+ */
+export async function requireAuthenticated(opts?: { partner?: boolean }): Promise<AuthzUser> {
+  const session = await getSession(opts);
   const userId = session?.user?.id;
   if (!userId) throw new AuthenticationError();
 
@@ -18,6 +24,7 @@ export async function requireAuthenticated(): Promise<AuthzUser> {
     select: { id: true, role: true },
   });
   if (!dbUser) throw new AuthenticationError();
+  if (dbUser.role === "partner" && !opts?.partner) throw new AuthenticationError();
 
   return { id: dbUser.id, role: mapLegacyRole(dbUser.role) };
 }
@@ -34,8 +41,4 @@ export async function requireRole(
 
 export function isAdmin(user: AuthzUser): boolean {
   return user.role === "admin";
-}
-
-export function isManagerOrAdmin(user: AuthzUser): boolean {
-  return user.role === "manager" || user.role === "admin";
 }

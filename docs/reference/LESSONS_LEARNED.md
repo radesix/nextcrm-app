@@ -247,6 +247,41 @@
 - **Tell:** a CI-config PR that goes green suspiciously fast, with heavy jobs skipped
   and no expanded matrix rows (1/3, 2/3, 3/3).
 
+## Upstream sync
+
+### A clean merge can silently undo a fork customization
+
+- **Symptom:** the v0.36 upstream sync (314 commits) reported 16 conflicts, and the
+  campaign sender wasn't one of them. Yet after resolving them, `send-step.ts` would have
+  sent campaigns through `lib/resend`'s **transactional** key, which disables click
+  tracking, with nothing flagged.
+- **Cause:** git conflicts only when both sides edit *overlapping lines*. Upstream changed
+  the send call **inside the handler** (`const resend = await resendHelper();`, which
+  shadows the module-level client), while the fork's change was the client construction
+  at the top of the file. Separate hunks merge "cleanly" into code that does the wrong thing.
+- **Fix / rule:** after every sync, `git diff <merge-base> upstream/main -- <file>` for
+  **every upstream-owned file that carries a fork customization** (the
+  `UPSTREAM_IMPACT_LOG.md` list), conflicted or not, and re-read the merged result. Lock
+  important fork behavior with a test that fails if it regresses
+  (`__tests__/campaigns/campaign-sender-key.test.ts`), so the next sync can't undo it quietly.
+- **Related trap — code that moves:** upstream moved the Prisma client from `lib/prisma.ts`
+  into `lib/prisma-base.ts`. "Take theirs" on `lib/prisma.ts` looked right, but it would
+  have dropped the fork's pool cap and idle-error handler without a trace. When upstream
+  restructures a file the fork customized, port the customization to the new location
+  (and retarget its guard test).
+
+### Upstream's partner gate makes the proxy read the session on every request
+
+- **Symptom (caught in review, not prod):** after the v0.36 sync, `proxy.ts` calls
+  `auth.api.getSession()` for every request with a session cookie that's outside the
+  partner allow-list, which is nearly every internal-user request. Each page's own session
+  read comes on top of that.
+- **Cause:** better-auth's `session.cookieCache` was off in this fork, so every
+  `getSession` is a DB round trip, on a 3-connection pool with an `EMAXCONNSESSION` history.
+- **Fix / rule:** the fork enables `cookieCache` for 60s (`lib/auth-session-cache.ts`).
+  When upstream adds a per-request auth lookup in middleware, check whether it hits the DB.
+  The trade-off: deactivation and role changes take up to `maxAge` to reach a signed-in browser.
+
 ## Database / migrations
 
 ### An uncapped `pg` pool exhausts the session-mode pooler → *every* page 500s
@@ -259,7 +294,8 @@
   (e.g. "convert target to deal") broke the site — but that action was only the
   straw that pushed concurrent connections over the ceiling.
 - **Cause:** every page needs the session, so once the DB pool is exhausted the
-  session read fails and *all* pages fail. Upstream's `lib/prisma.ts` builds the
+  session read fails and *all* pages fail. Upstream's Prisma client (`lib/prisma.ts`, moved to
+  `lib/prisma-base.ts` in upstream v0.36) builds the
   `pg` pool with **no `max`**, so it uses pg's default of **10 per function
   instance**; against the hosted **session-mode** pooler (`pool_size 15`), ~2 warm
   Vercel instances exhaust it — with barely any real traffic.

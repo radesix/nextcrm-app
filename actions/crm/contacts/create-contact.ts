@@ -1,12 +1,14 @@
 "use server";
 import { prismadb } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { pluginRuleErrorMessage } from "@/lib/plugins/action-errors";
 import sendEmail from "@/lib/sendmail";
 import { inngest } from "@/inngest/client";
 import { writeAuditLog } from "@/lib/audit-log";
 import {
   requireAuthenticated,
   assertCanWriteAccount,
+  PARTNER_EDIT,
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/authz";
@@ -47,14 +49,16 @@ export const createContact = async (data: {
 
   let user;
   try {
-    user = await requireAuthenticated();
+    user = await requireAuthenticated({ partner: true });
   } catch (e) {
     if (e instanceof AuthenticationError) return { error: "Unauthorized" };
     throw e;
   }
   try {
     // Parent-write: linking the new contact to an account requires write on it.
-    if (assigned_account) await assertCanWriteAccount(user, assigned_account);
+    // A partner creates contacts on his accounts only.
+    if (user.role === "partner" && !assigned_account) throw new AuthorizationError();
+    if (assigned_account) await assertCanWriteAccount(user, assigned_account, PARTNER_EDIT);
   } catch (e) {
     if (e instanceof AuthorizationError) return { error: "Forbidden" };
     throw e;
@@ -68,7 +72,8 @@ export const createContact = async (data: {
         createdBy: userId,
         updatedBy: userId,
         accountsIDs: assigned_account || undefined,
-        assigned_to: assigned_to || undefined,
+        // A partner assigns only to himself.
+        assigned_to: user.role === "partner" ? userId : assigned_to || undefined,
         contact_type_id: contact_type_id || undefined,
         birthday:
           birthday_day && birthday_month && birthday_year
@@ -83,10 +88,10 @@ export const createContact = async (data: {
         where: { id: assigned_to },
       });
 
-      if (notifyRecipient) {
+      if (notifyRecipient?.email) {
         await sendEmail({
           from: process.env.EMAIL_FROM as string,
-          to: notifyRecipient.email || "info@softbase.cz",
+          to: notifyRecipient.email,
           subject:
             notifyRecipient.userLanguage === "en"
               ? `New contact ${data.first_name} ${data.last_name} has been added to the system and assigned to you.`
@@ -110,6 +115,8 @@ export const createContact = async (data: {
     revalidatePath("/[locale]/crm/contacts", "page");
     return { data: contact };
   } catch (error) {
+    const ruleMessage = await pluginRuleErrorMessage(error);
+    if (ruleMessage) return { error: ruleMessage };
     console.log("[CREATE_CONTACT]", error);
     return { error: "Failed to create contact" };
   }

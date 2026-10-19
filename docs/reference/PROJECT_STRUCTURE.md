@@ -21,11 +21,18 @@ actions/                server actions (data mutations/reads) grouped by domain 
                         reports/, admin/, user/, system/, github/, fulltext/
 components/             shared UI component library (shadcn/ui + Radix + Tailwind)
 lib/                    server + shared logic — auth.ts / auth-client.ts (better-auth),
+                        auth-session-cache.ts (fork: better-auth cookieCache window),
+                        prisma.ts (prismadb = plugin-rules + private-document-URL extensions
+                        over prisma-base.ts, which owns the pg Pool: fork cap + idle handler),
                         api-keys.ts, serialize-decimals.ts (Decimal→number for the
                         server/client boundary), integrations, utilities;
                         crm/target-type.ts (fork-owned Individual/Company target
                         taxonomy — required-identity rule, per-type fields/labels,
                         title resolver; consumed by target forms, detail, list, MCP, import)
+plugins/                upstream (v0.36) bundled plugins: account-protection, odoo-connector,
+                        oxo-erp-connector, registry-ares. Inert until an admin installs one
+                        (InstalledPlugin rows). Runtime in lib/plugins/, pages at /[locale]/p/<id>/…
+packages/plugin-sdk/    upstream workspace package (@nextcrm/plugin-sdk) the plugins build on
 prisma/                 schema.prisma (the data model), migrations/ (forward-only,
                         applied via `prisma migrate deploy`), seeds/ + initial-data/
 inngest/                background jobs — client.ts (Inngest client), functions/, lib/

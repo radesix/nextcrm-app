@@ -2,14 +2,25 @@ import { z } from "zod";
 import { prismadb } from "@/lib/prisma";
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { minioClient, MINIO_BUCKET, MINIO_PUBLIC_URL } from "@/lib/minio";
+import { minioPresignClient, MINIO_BUCKET, MINIO_PUBLIC_URL } from "@/lib/minio";
 import { randomUUID } from "crypto";
+import { AuthorizationError, type AuthzUser } from "@/lib/authz";
+import { isUnhandledRole } from "@/lib/authz/scopes/unhandled-role";
+import {
+  documentReadScopeWhere,
+  assertCanWriteAccount,
+  assertCanWriteContact,
+  assertCanWriteLead,
+  assertCanWriteOpportunity,
+  assertCanWriteTask,
+} from "@/lib/authz/scopes/crm";
 import {
   paginationSchema,
   paginationArgs,
   listResponse,
   itemResponse,
   notFound,
+  forbidden,
   validationError,
   softDeleteData,
 } from "../helpers";
@@ -31,6 +42,25 @@ const ENTITY_FK_MAP: Record<string, string> = {
   task: "task_id",
 };
 
+// Linking a document to a record is a write on that record.
+const ENTITY_WRITE_ASSERT: Record<string, (user: AuthzUser, id: string) => Promise<void>> = {
+  account: assertCanWriteAccount,
+  contact: assertCanWriteContact,
+  lead: assertCanWriteLead,
+  opportunity: assertCanWriteOpportunity,
+  task: assertCanWriteTask,
+};
+
+async function assertCanWriteLinkTarget(user: AuthzUser, entityType: string, entityId: string) {
+  if (!Object.hasOwn(ENTITY_WRITE_ASSERT, entityType)) validationError(`Invalid entity type: ${entityType}`);
+  try {
+    await ENTITY_WRITE_ASSERT[entityType](user, entityId);
+  } catch (e) {
+    if (e instanceof AuthorizationError) forbidden();
+    throw e;
+  }
+}
+
 export const crmDocumentTools = [
   {
     name: "crm_list_documents",
@@ -49,12 +79,10 @@ export const crmDocumentTools = [
         limit: number;
         offset: number;
       },
-      userId: string
+      _userId: string,
+      user: AuthzUser
     ) {
-      const where: any = {
-        created_by_user: userId,
-        deletedAt: null,
-      };
+      const where: any = documentReadScopeWhere(user);
       if (args.entityType && args.entityId) {
         const relation =
           args.entityType === "account"
@@ -85,9 +113,9 @@ export const crmDocumentTools = [
     name: "crm_get_document",
     description: "Get a single document by ID",
     schema: z.object({ id: z.string().uuid() }),
-    async handler(args: { id: string }, userId: string) {
+    async handler(args: { id: string }, _userId: string, user: AuthzUser) {
       const doc = await prismadb.documents.findFirst({
-        where: { id: args.id, created_by_user: userId, deletedAt: null },
+        where: { id: args.id, ...documentReadScopeWhere(user) },
         include: {
           accounts: true,
           contacts: true,
@@ -116,8 +144,11 @@ export const crmDocumentTools = [
         description?: string;
         visibility?: string;
       },
-      userId: string
+      userId: string,
+      user: AuthzUser,
     ) {
+      // Document writes are for internal roles only (a partner never writes documents).
+      if (isUnhandledRole(user)) forbidden();
       const ext = args.document_name.includes(".")
         ? args.document_name.split(".").pop()?.trim() || "bin"
         : "bin";
@@ -143,7 +174,7 @@ export const crmDocumentTools = [
         Key: key,
         ContentType: args.contentType,
       });
-      const presignedUrl = await getSignedUrl(minioClient, command, { expiresIn: 600 });
+      const presignedUrl = await getSignedUrl(minioPresignClient, command, { expiresIn: 600 });
 
       return itemResponse({ ...doc, presignedUrl, expiresIn: 600 });
     },
@@ -152,7 +183,9 @@ export const crmDocumentTools = [
     name: "crm_get_upload_url",
     description: "Get a presigned upload URL for an existing document",
     schema: z.object({ id: z.string().uuid() }),
-    async handler(args: { id: string }, userId: string) {
+    async handler(args: { id: string }, userId: string, user: AuthzUser) {
+      // Document writes are for internal roles only (a partner never writes documents).
+      if (isUnhandledRole(user)) forbidden();
       const doc = await prismadb.documents.findFirst({
         where: { id: args.id, created_by_user: userId },
       });
@@ -163,7 +196,7 @@ export const crmDocumentTools = [
         Key: doc.key!,
         ContentType: doc.document_file_mimeType,
       });
-      const presignedUrl = await getSignedUrl(minioClient, command, { expiresIn: 600 });
+      const presignedUrl = await getSignedUrl(minioPresignClient, command, { expiresIn: 600 });
       return itemResponse({ id: doc.id, url: presignedUrl, expiresIn: 600 });
     },
   },
@@ -171,9 +204,9 @@ export const crmDocumentTools = [
     name: "crm_get_download_url",
     description: "Get a presigned download URL for a document",
     schema: z.object({ id: z.string().uuid() }),
-    async handler(args: { id: string }, userId: string) {
+    async handler(args: { id: string }, _userId: string, user: AuthzUser) {
       const doc = await prismadb.documents.findFirst({
-        where: { id: args.id, created_by_user: userId },
+        where: { id: args.id, ...documentReadScopeWhere(user) },
       });
       if (!doc) notFound("Document");
       if (!doc.key) validationError("Document has no storage key");
@@ -181,7 +214,7 @@ export const crmDocumentTools = [
         Bucket: MINIO_BUCKET,
         Key: doc.key!,
       });
-      const presignedUrl = await getSignedUrl(minioClient, command, { expiresIn: 3600 });
+      const presignedUrl = await getSignedUrl(minioPresignClient, command, { expiresIn: 3600 });
       return itemResponse({ id: doc.id, url: presignedUrl, expiresIn: 3600 });
     },
   },
@@ -196,8 +229,11 @@ export const crmDocumentTools = [
     }),
     async handler(
       args: { document_id: string; entityType: string; entityId: string },
-      userId: string
+      userId: string,
+      user: AuthzUser,
     ) {
+      // Document writes are for internal roles only (a partner never writes documents).
+      if (isUnhandledRole(user)) forbidden();
       const doc = await prismadb.documents.findFirst({
         where: { id: args.document_id, created_by_user: userId },
       });
@@ -206,6 +242,7 @@ export const crmDocumentTools = [
       const table = ENTITY_LINK_MAP[args.entityType];
       const fk = ENTITY_FK_MAP[args.entityType];
       if (!table || !fk) validationError(`Invalid entity type: ${args.entityType}`);
+      await assertCanWriteLinkTarget(user, args.entityType, args.entityId);
 
       await (prismadb as any)[table].create({
         data: { document_id: args.document_id, [fk]: args.entityId },
@@ -228,8 +265,11 @@ export const crmDocumentTools = [
     }),
     async handler(
       args: { document_id: string; entityType: string; entityId: string },
-      userId: string
+      userId: string,
+      user: AuthzUser,
     ) {
+      // Document writes are for internal roles only (a partner never writes documents).
+      if (isUnhandledRole(user)) forbidden();
       const doc = await prismadb.documents.findFirst({
         where: { id: args.document_id, created_by_user: userId },
       });
@@ -238,6 +278,7 @@ export const crmDocumentTools = [
       const table = ENTITY_LINK_MAP[args.entityType];
       const fk = ENTITY_FK_MAP[args.entityType];
       if (!table || !fk) validationError(`Invalid entity type: ${args.entityType}`);
+      await assertCanWriteLinkTarget(user, args.entityType, args.entityId);
 
       await (prismadb as any)[table].delete({
         where: {
@@ -260,7 +301,9 @@ export const crmDocumentTools = [
     name: "crm_delete_document",
     description: "Soft-delete a document (sets status to DELETED)",
     schema: z.object({ id: z.string().uuid() }),
-    async handler(args: { id: string }, userId: string) {
+    async handler(args: { id: string }, userId: string, user: AuthzUser) {
+      // Document writes are for internal roles only (a partner never writes documents).
+      if (isUnhandledRole(user)) forbidden();
       const existing = await prismadb.documents.findFirst({
         where: { id: args.id, created_by_user: userId, deletedAt: null },
       });

@@ -1,12 +1,15 @@
 "use server";
 import { prismadb } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { pluginRuleErrorMessage } from "@/lib/plugins/action-errors";
 import sendEmail from "@/lib/sendmail";
 import { inngest } from "@/inngest/client";
 import { writeAuditLog, diffObjects } from "@/lib/audit-log";
 import {
   requireAuthenticated,
   assertCanWriteLead,
+  assertCanWriteAccount,
+  PARTNER_EDIT,
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/authz";
@@ -50,13 +53,15 @@ export const updateLead = async (data: {
 
   let user;
   try {
-    user = await requireAuthenticated();
+    user = await requireAuthenticated({ partner: true });
   } catch (e) {
     if (e instanceof AuthenticationError) return { error: "Unauthorized" };
     throw e;
   }
   try {
-    await assertCanWriteLead(user, id);
+    await assertCanWriteLead(user, id, PARTNER_EDIT);
+    // A partner may relink a lead only to another of his accounts.
+    if (user.role === "partner" && accountIDs) await assertCanWriteAccount(user, accountIDs, PARTNER_EDIT);
   } catch (e) {
     if (e instanceof AuthorizationError) return { error: "Forbidden" };
     throw e;
@@ -82,8 +87,9 @@ export const updateLead = async (data: {
         lead_type_id: lead_type_id || undefined,
         refered_by,
         campaign,
-        assigned_to: assigned_to || userId,
-        accountsIDs: accountIDs,
+        // A partner never changes the assignee or unlinks the account.
+        assigned_to: user.role === "partner" ? undefined : assigned_to || userId,
+        accountsIDs: user.role === "partner" ? accountIDs || undefined : accountIDs,
       },
     });
 
@@ -92,10 +98,10 @@ export const updateLead = async (data: {
         where: { id: assigned_to },
       });
 
-      if (notifyRecipient) {
+      if (notifyRecipient?.email) {
         await sendEmail({
           from: process.env.EMAIL_FROM as string,
-          to: notifyRecipient.email || "info@softbase.cz",
+          to: notifyRecipient.email,
           subject:
             notifyRecipient.userLanguage === "en"
               ? `New lead ${firstName} ${lastName} has been added to the system and assigned to you.`
@@ -120,6 +126,8 @@ export const updateLead = async (data: {
     revalidatePath("/[locale]/(routes)/crm/leads", "page");
     return { data: lead };
   } catch (error) {
+    const ruleMessage = await pluginRuleErrorMessage(error);
+    if (ruleMessage) return { error: ruleMessage };
     console.log("[UPDATE_LEAD]", error);
     return { error: "Failed to update lead" };
   }

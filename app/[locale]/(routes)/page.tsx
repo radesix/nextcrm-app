@@ -42,7 +42,7 @@ import { getDefaultCurrency, formatCurrency as formatCurrencyUtil } from "@/lib/
 import { Decimal } from "@prisma/client/runtime/client";
 
 const DashboardPage = async () => {
-  const session = await getSession();
+  const session = await getSession({ partner: true });
 
   if (!session) return null;
 
@@ -129,7 +129,7 @@ const DashboardPage = async () => {
           content={campaigns}
         />
         <DashboardCard
-          href="/crm/targets"
+          href="/campaigns/targets"
           title={dict("targets")}
           IconComponent={Target}
           content={targets}

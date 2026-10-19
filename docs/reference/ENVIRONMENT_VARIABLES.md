@@ -56,12 +56,13 @@ in this fork's code** (kept for merge-friendliness).
 | Variable | Scope | Required | Purpose | Format / example |
 |---|---|---|---|---|
 | `DATABASE_URL` | All | Yes | Postgres connection string (Prisma). The Vercel deploy runs `prisma migrate deploy` with this, and the runtime pool falls back to it. | Local `postgresql://postgres:postgres@127.0.0.1:54622/postgres`; hosted = **session** pooler `:5432`, IPv4 (`SUPABASE_ON_VERCEL.md`). |
-| `RUNTIME_DATABASE_URL` | Preview, Prod | No | Connection string the **runtime** pool (`lib/prisma.ts`) uses when it should differ from `DATABASE_URL` — the Supabase **transaction** pooler `:6543`, so warm instances multiplex instead of exhausting the session pooler (`EMAXCONNSESSION`). Blank/unset → falls back to `DATABASE_URL`. Not used by migrations. | hosted = transaction pooler `:6543`; empty locally. See `SUPABASE_ON_VERCEL.md` §3. |
-| `DB_POOL_MAX` | All | No | Max `pg` connections **per function instance** (`lib/prisma.ts`). Caps the pool so a cold-start fan-out can't exhaust the session-mode pooler (`EMAXCONNSESSION` → all pages 500). Empty/invalid falls back to 3; **never set to 1** (deadlocks multi-query renders). Set on **every** scope (`SUPABASE_ON_VERCEL.md` §3). | `3` |
+| `RUNTIME_DATABASE_URL` | Preview, Prod | No | Connection string the **runtime** pool (`lib/prisma-base.ts`, since the v0.36 upstream sync) uses when it should differ from `DATABASE_URL` — the Supabase **transaction** pooler `:6543`, so warm instances multiplex instead of exhausting the session pooler (`EMAXCONNSESSION`). Blank/unset → falls back to `DATABASE_URL`. Not used by migrations. | hosted = transaction pooler `:6543`; empty locally. See `SUPABASE_ON_VERCEL.md` §3. |
+| `DB_POOL_MAX` | All | No | Max `pg` connections **per function instance** (`lib/prisma-base.ts`). Caps the pool so a cold-start fan-out can't exhaust the session-mode pooler (`EMAXCONNSESSION` → all pages 500). Empty/invalid falls back to 3; **never set to 1** (deadlocks multi-query renders). Set on **every** scope (`SUPABASE_ON_VERCEL.md` §3). | `3` |
 | `BETTER_AUTH_SECRET` | All | Yes | better-auth signing secret. The Production value is a root credential. | `openssl rand -base64 32` |
 | `BETTER_AUTH_URL` | All | Yes | Auth base URL. | `http://localhost:3000` / `https://crm.radeengineering.com` |
 | `GOOGLE_ID` | All | Yes | Google OAuth client id (read at auth init). | from Google Cloud console |
 | `GOOGLE_SECRET` | All | Yes | Google OAuth client secret. | from Google Cloud console |
+| `SEED_DEMO_DATA` | Dev | No | `1` makes `pnpm db:seed` also load upstream's demo CRM dataset. Upstream added it to `.env.example` in v0.36. Never set on hosted DBs (the seed is the single source of truth for real seed rows). | empty / `1` |
 | `EMAIL_ENCRYPTION_KEY` | All | Yes | 64-hex key encrypting stored email creds / API keys (`lib/email-crypto.ts` throws if malformed). | `openssl rand -hex 32` |
 
 ### Object storage (R2 / S3 — local SeaweedFS)
@@ -72,9 +73,8 @@ in this fork's code** (kept for merge-friendliness).
 | `MINIO_ACCESS_KEY` | All | Yes | S3 access key. | — |
 | `MINIO_SECRET_KEY` | All | Yes | S3 secret key. | — |
 | `MINIO_BUCKET` | All | Yes | Bucket name. | Local `nextcrm`; QA `rade-crm-qa`; prod `rade-crm-prod` |
-| `NEXT_PUBLIC_MINIO_ENDPOINT` | All | Yes | Public base URL for presigned links (client-exposed). | Local `http://localhost:9000`; hosted = public R2 URL |
-| `MINIO_PORT` | — | Legacy | Not read in this fork. | — |
-| `MINIO_USE_SSL` | — | Legacy | Not read in this fork. | — |
+| `MINIO_PUBLIC_ENDPOINT` | All | Optional | Browser-facing bucket URL for links and presigned URLs, read at runtime (upstream v0.36). `lib/minio.ts` `minioPublicEndpoint()` prefers it, then `NEXT_PUBLIC_MINIO_ENDPOINT`, then `MINIO_ENDPOINT`. | Unset in this fork (the `NEXT_PUBLIC_MINIO_ENDPOINT` fallback is used); hosted = public R2 URL if set |
+| `NEXT_PUBLIC_MINIO_ENDPOINT` | All | Yes | Public base URL for presigned links (client-exposed). Upstream dropped it from its block (legacy fallback since v0.36), but this fork still sets it, so it lives in the fork block. | Local `http://localhost:9000`; hosted = public R2 URL |
 
 ### Email (Resend + nodemailer)
 
@@ -91,10 +91,6 @@ in this fork's code** (kept for merge-friendliness).
 | `EMAIL_PASSWORD` | All | No | SMTP password. | — |
 | `MAILTRAP_API_KEY` | All | No | Mailtrap key; falls back to a DB service key. | — |
 | `EMAIL_REDIRECT_TO` | Dev, Preview | No | **Non-prod safety:** rewrites every outbound recipient to this one test inbox so QA/dev sends never reach real people (`lib/email/redirect.ts`). Set in Dev + Preview **only**; unset in Production (and it never redirects a prod deploy). | `qa-inbox@example.com` |
-| `SMTP_HOST` | — | Legacy | Not read in this fork (per-account email creds live in the DB). | — |
-| `SMTP_PORT` | — | Legacy | Not read in this fork. | — |
-| `SMTP_USER` | — | Legacy | Not read in this fork. | — |
-| `SMTP_PASSWORD` | — | Legacy | Not read in this fork. | — |
 
 ### Cache / rate-limiting (Upstash Redis)
 
@@ -135,10 +131,10 @@ in this fork's code** (kept for merge-friendliness).
 | `ASSISTANT_TOKEN` | Preview, Prod | Route | Bearer token for the AI-assistant write endpoint `POST /api/crm/assistant/inquiry` (website chat + voice agent via n8n). **Separate from `NEXTCRM_TOKEN`** so it can be revoked independently; compared in constant time. **Fail-closed:** unset or shorter than 32 chars = every call 401s (no deploy breaks). Contract: `docs/reference/ASSISTANT_INQUIRY_API.md`. Generate with `openssl rand -hex 32`; the same value goes into the n8n credential. | 64-char hex |
 | `NEXTAUTH_URL` | All | No | Base URL for campaign unsubscribe links. | `https://crm.radeengineering.com` |
 | `MAIL_ALLOW_PRIVATE_HOSTS` | All | No | SSRF gate (`lib/net/host-guard.ts`), default off. **Never set in Preview/Production**: it would weaken the homepage source-harvest SSRF guard (a hosted-env fail-safe already blocks harvest when it is set there, but do not rely on that). | unset, or `true` (dev only) |
+| `PLUGIN_HTTP_ALLOW_PRIVATE_HOSTS` | Dev only | No | Upstream plugin HTTP client SSRF guard (`lib/plugins/http.ts`). `"true"` allows private/loopback hosts for local plugin testing. **Never set in Preview/Production.** | empty |
+| `REDIS_URL` | Optional | No | Redis for the MCP **SSE** transport (`app/api/mcp/[transport]/route.ts`). Unset (and no `KV_URL`) = SSE returns 501, and the HTTP transport (what the CRM MCP clients use) is unaffected. Not the Upstash REST pair. | `redis://…` |
+| `KV_URL` | Optional | No | Alternative name for `REDIS_URL` (same check, either one enables MCP SSE). | `redis://…` |
 | `NEXT_PUBLIC_PREVIEWS_BASE_URL` | Preview, Prod | No | Public base URL of the prospect-preview host (`/p/<slug>` is served under it). **Optional / fail-closed:** the homepage generate job (`inngest/functions/generate-homepage.ts`) builds `preview_url`/`screenshot_url` from it and leaves them `null` if unset (the page is still stored + `READY`; the drawer falls back to the relative `/p/<slug>` on the CRM host). **No new bucket/creds:** previews reuse the existing `MINIO_*` R2 bucket under a private `previews/` prefix, served only through the Next `/p/` route. | `https://previews.radeengineering.com` |
-| `ROSSUM_USERNAME` | — | Legacy | Not read in this fork. | — |
-| `ROSSUM_PASSWORD` | — | Legacy | Not read in this fork. | — |
-| `CRON_SECRET` | — | Legacy | Not read in this fork. | — |
 
 ### App identity / public branding (`NEXT_PUBLIC_*` — bundled to the browser)
 
@@ -165,7 +161,7 @@ sandbox-runtime values — not application configuration — so they are exclude
 | Variable | Where | Why excluded |
 |---|---|---|
 | `NODE_ENV`, `CI`, `VERCEL*`, `NEXT_RUNTIME` | many | Platform/framework-injected. |
-| `SEED_DEMO_DATA`, `SEED_CONTACT_EMAIL`, `TEST_USER_EMAIL` | `prisma/seeds/`, tests | Seed/test only. |
+| `SEED_CONTACT_EMAIL`, `TEST_USER_EMAIL` | `prisma/seeds/`, tests | Seed/test only. |
 | `DATABASE_URL_MONGO`, `DATABASE_URL_POSTGRES` | `scripts/migrate-mongo-to-postgres.ts` | One-off migration script. |
 | `ANTHROPIC_BASE_URL` | `actions/crm/targets/generate-target-email.ts`, `lib/homepage/provider.ts` | Optional **test seam** (same name the Anthropic SDKs use): overrides the API origin. Set only by `playwright.config.ts` to a local mock for `tests/e2e/target-ai-email.spec.ts`; unset in every deployed scope → the real API. |
 | `OPENAI_BASE_URL` | `lib/homepage/images/openai.ts` | Optional **test seam** (mirrors `ANTHROPIC_BASE_URL`, same name the OpenAI SDKs use): overrides the OpenAI Images API origin for the homepage image fallback. Unset in every deployed scope → `https://api.openai.com`. |

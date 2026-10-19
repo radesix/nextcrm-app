@@ -1,6 +1,7 @@
 "use server";
 import { prismadb } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { pluginRuleErrorMessage } from "@/lib/plugins/action-errors";
 import { inngest } from "@/inngest/client";
 import { writeAuditLog, diffObjects } from "@/lib/audit-log";
 import { getSnapshotRate, getDefaultCurrency } from "@/lib/currency";
@@ -9,6 +10,9 @@ import { qualifiedEntryBlockReason } from "@/lib/crm/approval-gate";
 import {
   requireAuthenticated,
   assertCanWriteOpportunity,
+  assertCanWriteAccount,
+  assertCanWriteContact,
+  PARTNER_EDIT,
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/authz";
@@ -53,13 +57,16 @@ export const updateOpportunity = async (data: {
   // Authorization runs before the approval gate and the update.
   let user;
   try {
-    user = await requireAuthenticated();
+    user = await requireAuthenticated({ partner: true });
   } catch (e) {
     if (e instanceof AuthenticationError) return { error: "Unauthorized" };
     throw e;
   }
   try {
-    await assertCanWriteOpportunity(user, id);
+    await assertCanWriteOpportunity(user, id, PARTNER_EDIT);
+    // A partner may move an opportunity only to another of his accounts / contacts.
+    if (user.role === "partner" && account) await assertCanWriteAccount(user, account, PARTNER_EDIT);
+    if (user.role === "partner" && contact) await assertCanWriteContact(user, contact, PARTNER_EDIT);
   } catch (e) {
     if (e instanceof AuthorizationError) return { error: "Forbidden" };
     throw e;
@@ -82,7 +89,8 @@ export const updateOpportunity = async (data: {
       where: { id },
       data: {
         account: account || undefined,
-        assigned_to: assigned_to || undefined,
+        // A partner never changes the assignee.
+        assigned_to: user.role === "partner" ? undefined : assigned_to || undefined,
         budget: budget ? parseFloat(budget) : undefined,
         campaign: campaign || undefined,
         close_date,
@@ -118,6 +126,8 @@ export const updateOpportunity = async (data: {
     revalidatePath("/[locale]/(routes)/crm/opportunities", "page");
     return { data: serialize(opportunity) };
   } catch (error) {
+    const ruleMessage = await pluginRuleErrorMessage(error);
+    if (ruleMessage) return { error: ruleMessage };
     console.log("[UPDATE_OPPORTUNITY]", error);
     return { error: "Failed to update opportunity" };
   }

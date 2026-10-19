@@ -9,6 +9,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NavMain } from "./nav-main";
 import { NavUser } from "./nav-user";
@@ -21,6 +22,7 @@ import getDocumentsMenuItem from "./menu-items/Documents";
 import getInvoicesMenuItem from "./menu-items/Invoices";
 import getAdministrationMenuItem from "./menu-items/Administration";
 import getCampaignsMenuItem from "./menu-items/Campaigns";
+import { partnerNavItems } from "@/lib/partner-routes";
 
 /**
  * AppSidebar Component - Task Groups 1.2, 2.2-2.7, 3.1, 5.3, 5.4
@@ -79,11 +81,15 @@ interface Session {
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   dict: any;
   session: Session;
+  pluginNav?: { title: string; url: string }[];
+  appName: string;
 }
 
 export function AppSidebar({
   dict,
   session,
+  pluginNav,
+  appName,
   ...props
 }: AppSidebarProps) {
   const { state } = useSidebar();
@@ -108,6 +114,10 @@ export function AppSidebar({
     getDocumentsMenuItem({ title: dict?.documents || "Documents" }),
     getInvoicesMenuItem({ title: dict?.invoices || "Invoices" }),
   ];
+
+  if (pluginNav?.length) {
+    navItems.push({ title: dict?.plugins || "Plugins", icon: Puzzle, items: pluginNav });
+  }
 
   // Administration: admin users only
   if (session?.user?.role === "admin") {
@@ -151,7 +161,7 @@ export function AppSidebar({
               !isExpanded ? "w-0 opacity-0" : "w-auto opacity-100",
             )}
           >
-            {process.env.NEXT_PUBLIC_APP_NAME || "NextCRM"}
+            {appName}
           </h1>
         </div>
       </SidebarHeader>
@@ -159,7 +169,10 @@ export function AppSidebar({
       {/* Main Content - Navigation */}
       <SidebarContent>
         {/* NavMain component with all enabled module navigation items */}
-        <NavMain items={navItems} dict={dict} />
+        <NavMain
+          items={session?.user?.role === "partner" ? partnerNavItems(navItems) : navItems}
+          dict={dict}
+        />
       </SidebarContent>
 
       {/* Footer with NavUser and Build Version */}
