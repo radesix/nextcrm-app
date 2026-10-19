@@ -31,6 +31,9 @@ env:
   EMAIL_HOST: smtp.example.com
   EMAIL_USERNAME: ci
   EMAIL_PASSWORD: ci
+  # fork: the fail-closed send core + campaign unsubscribe links read NEXTAUTH_URL
+  # (upstream v0.36 moved its own links to NEXT_PUBLIC_APP_URL and dropped this)
+  NEXTAUTH_URL: http://localhost:3000
   NEXT_PUBLIC_APP_URL: http://localhost:3000
   NEXT_PUBLIC_APP_NAME: NextCRM-CI
   INNGEST_ID: nextcrm-ci

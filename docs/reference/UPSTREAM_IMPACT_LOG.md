@@ -1011,6 +1011,7 @@ and the resolution choice.
 | `.gitignore` | +4/−2 | Union. | Low |
 | `lib/__tests__/partner-routes.test.ts` | +2/−1 | Added the fork's `prompts` label to upstream's campaigns-menu fixture (type break). | Low |
 | `prisma/schema.prisma` | +203/−0 | Both sides appended models at the same place: kept both and restored the shared closing brace. | Low |
+| `.github/workflows/ci.yml` | +3/−0 (this sync) | **Clean-merge regression, caught by CI:** upstream dropped `NEXTAUTH_URL` from the job env, so the fork's fail-closed send core (`MISSING_BASE_URL_MESSAGE`) failed 5 unit tests. Restored with a fork comment. | Medium (upstream may keep editing this env block) |
 
 Fork-owned files changed: `lib/auth-session-cache.ts` (new), `lib/__tests__/prisma.test.ts`,
 `scripts/check-env-docs.sh` (`SEED_DEMO_DATA` moved off the ignore-list),
