@@ -81,3 +81,35 @@ export async function markCampaignSentIfComplete(campaignId: string): Promise<bo
   });
   return count > 0;
 }
+
+const MAX_ERROR_MESSAGE = 1000;
+
+/**
+ * send-step's `onFailure`: runs once Inngest has exhausted the function's retries
+ * (e.g. Resend kept throwing instead of returning `{ error }`). Without it the send
+ * record stays "queued" forever and markCampaignSentIfComplete can never finish
+ * the campaign. Marks the send "failed" only while it is still "queued", so a send
+ * that already went out (a later step failed) is never rewritten, then re-checks
+ * completion.
+ */
+export async function onCampaignSendStepFailure({
+  event,
+  error,
+}: {
+  event: { data: { event: { data?: unknown } } };
+  error: Error;
+}): Promise<void> {
+  const data = event.data.event.data as { sendId?: unknown; campaignId?: unknown } | undefined;
+  const sendId = data?.sendId;
+  const campaignId = data?.campaignId;
+  if (typeof sendId !== "string" || typeof campaignId !== "string") return;
+
+  await prismadb.crm_campaign_sends.updateMany({
+    where: { id: sendId, status: "queued" },
+    data: {
+      status: "failed",
+      error_message: (error?.message || "Send failed after retries").slice(0, MAX_ERROR_MESSAGE),
+    },
+  });
+  await markCampaignSentIfComplete(campaignId);
+}

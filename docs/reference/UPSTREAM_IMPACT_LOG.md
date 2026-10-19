@@ -957,7 +957,7 @@ all the logic (`resolveCampaignRecipients`, `NO_RECIPIENTS_ERROR`, `markCampaign
 |---|---|---|---|---|
 | `inngest/functions/campaigns/send-now.ts` | +7/−18 | **rewrite (one block)** | The `resolve-recipients` step body (inline list loop using `subscribedTargetsInclude`) is replaced by `resolveCampaignRecipients(campaignId)`. The import swaps `subscribedTargetsInclude` for the fork helpers. Inserted a `mark-sent-if-complete` step before the final `return`. | Medium (on conflict, take upstream's loop and re-replace the step body; keep the end step) |
 | `inngest/functions/campaigns/schedule-send.ts` | +6/−21 | **rewrite (one block)** | Same `resolve-recipients` swap and import swap. `mark-sent-if-complete` inserted **after** the final `status: "sending"` update (order matters; guarded by a wiring test). | Medium (same recipe) |
-| `inngest/functions/campaigns/send-step.ts` | +5/−0 | insert-only | Import plus a `mark-sent-if-complete` step after `update-send-record`. | Low |
+| `inngest/functions/campaigns/send-step.ts` | +7/−0 | insert-only | Import of `markCampaignSentIfComplete` + `onCampaignSendStepFailure`. A `mark-sent-if-complete` step after `update-send-record`. An `onFailure: onCampaignSendStepFailure` line in the function config (retries exhausted: mark the still-queued send `failed`, then re-check completion). | Low |
 | `actions/campaigns/send-campaign-now.ts` | +5/−0 | insert-only | Import plus the no-recipient guard after the authz block (returns `{ error: NO_RECIPIENTS_ERROR }`). | Low |
 | `lib/mcp/tools/campaigns.ts` | +4/−0 | insert-only | Import plus the same guard in `campaigns_send` (`conflict(NO_RECIPIENTS_ERROR)`). | Low |
 | `app/[locale]/(routes)/campaigns/new/components/WizardShell.tsx` | +3/−1 | near insert-only | `await sendCampaignNow(...)` now keeps its result and toasts `{error}` (it was silently dropped before). | Low |
@@ -969,9 +969,6 @@ all the logic (`resolveCampaignRecipients`, `NO_RECIPIENTS_ERROR`, `markCampaign
 outside its own test, but it's kept to avoid divergence from upstream.
 
 **Known gaps (deferred):**
-- A send whose Inngest retries all fail by *throwing* (as opposed to Resend returning `{error}`)
-  stays `queued`, so its campaign stays "sending". The follow-up would be an `onFailure` on
-  send-step that marks the record `failed`.
 - The campaign shows "sent" once step 0 finishes, even while follow-up steps are pending.
   Follow-ups still go out, and the web Pause action still works, but MCP `campaigns_pause`
   refuses a "sent" campaign.
@@ -979,7 +976,8 @@ outside its own test, but it's kept to avoid divergence from upstream.
   recipients, a scheduled campaign moves to "sent" at its send time.
 
 **Re-verify after any upstream merge:** `__tests__/campaigns/campaign-recipients*.test.ts`,
-`__tests__/campaigns/send-campaign-now-recipients.test.ts` and
+`__tests__/campaigns/send-campaign-now-recipients.test.ts`,
+`__tests__/campaigns/campaign-send-failure.test.ts` and
 `__tests__/campaigns/api/unsubscribe-*.test.ts` stay green. If upstream changes the
 `resolve-recipients` step shape, the wiring test fails and points at it.
 

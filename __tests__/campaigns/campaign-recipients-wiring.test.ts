@@ -29,6 +29,12 @@ describe("campaign recipient/completion hooks stay wired", () => {
     );
   });
 
+  it("send-step marks the send failed when its retries run out", () => {
+    expect(read("inngest/functions/campaigns/send-step.ts")).toMatch(
+      /onFailure: onCampaignSendStepFailure,/
+    );
+  });
+
   it("MCP campaigns_send refuses an audience with no recipients", () => {
     expect(read("lib/mcp/tools/campaigns.ts")).toMatch(
       /resolveCampaignRecipients\(args\.id\)\)\.length === 0\) conflict\(NO_RECIPIENTS_ERROR\)/

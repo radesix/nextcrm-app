@@ -153,6 +153,9 @@
   (`app/api/campaigns/unsubscribe/route.ts` now matches all three). A status lifecycle also
   needs its terminal transition: `markCampaignSentIfComplete` is the `sending → sent` step,
   guarded on `status: "sending"` so it's idempotent and never flips a paused campaign.
+  Every path out of "queued" has to be covered, including Inngest exhausting a function's
+  retries: send-step's `onFailure` (`onCampaignSendStepFailure`) marks the send `failed`.
+  Without it, one send that keeps throwing would pin the campaign on "sending" again.
 - **Tell:** a campaign on "sending" with **no** `crm_campaign_sends` rows had zero resolved
   recipients. Check the targets' three email fields and `do_not_email`.
 
