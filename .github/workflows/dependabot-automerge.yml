@@ -1,6 +1,7 @@
 # Auto-merges Dependabot PRs for patch and minor updates once every other
-# check on the PR (CI, Vercel preview, etc.) has passed. Major updates, and any
-# PR whose checks fail or never report, are left open and assigned for review.
+# check on the PR (CI, Vercel preview, etc.) has passed. Major updates, GitHub
+# Actions updates, and any PR whose checks fail or never report are left open
+# and assigned for review.
 #
 # Managed by the Rade maintenance kit — edit the kit template, not this copy.
 name: Dependabot auto-merge
@@ -12,6 +13,10 @@ permissions:
   pull-requests: write
   checks: read
   statuses: read
+  # Required: `gh pr checks` always selects checkSuite{workflowRun{...}} on the
+  # PR's commit, whatever fields --json asks for. Without actions: read that
+  # GraphQL query is rejected and the step below can read no checks at all.
+  actions: read
 
 concurrency:
   group: dependabot-automerge-${{ github.event.pull_request.number }}
@@ -25,18 +30,35 @@ jobs:
     steps:
       - name: Read Dependabot metadata
         id: meta
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Leave major updates for review
         if: steps.meta.outputs.update-type == 'version-update:semver-major'
-        run: echo "Major update (${{ steps.meta.outputs.dependency-names }}) - leaving for manual review."
+        env:
+          DEPS: ${{ steps.meta.outputs.dependency-names }}
+        run: echo "Major update ($DEPS) - leaving for manual review."
+
+      # GitHub Actions updates edit files under .github/workflows/. The built-in
+      # GITHUB_TOKEN can never be granted the `workflows` permission, so GitHub
+      # rejects its merge of such a PR. Say so on the PR instead of failing.
+      - name: Leave GitHub Actions updates for review
+        if: >-
+          steps.meta.outputs.package-ecosystem == 'github_actions' &&
+          steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr comment "$PR_URL" --body "Not auto-merged: this updates workflow files under \`.github/workflows/\`, which the built-in Actions token is not permitted to change. Merge it yourself once checks pass." || true
 
       - name: Wait for checks, then merge
         if: >-
-          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
-          steps.meta.outputs.update-type == 'version-update:semver-minor'
+          steps.meta.outputs.package-ecosystem != 'github_actions' &&
+          (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -51,9 +73,31 @@ jobs:
           sleep 60
           deadline=$((SECONDS + 2700))
           stable=0
+          errors=0
+          err=$(mktemp)
           while :; do
-            json=$(gh pr checks "$PR_URL" --json name,bucket,workflow 2>/dev/null) || true
-            [ -z "$json" ] && json='[]'
+            # `gh pr checks` exits non-zero when checks are merely pending or
+            # failing, so the exit code alone cannot tell us the call worked.
+            # Trust stdout instead: valid JSON means we got a real answer.
+            json=$(gh pr checks "$PR_URL" --json name,bucket,workflow 2>"$err") || true
+            if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"$json"; then
+              if grep -qi 'no checks reported' "$err"; then
+                # A genuine empty state: no check has registered on the PR yet.
+                json='[]'
+              else
+                errors=$((errors + 1))
+                echo "gh pr checks failed to return JSON (attempt $errors):" >&2
+                cat "$err" >&2
+                if [ "$errors" -ge 5 ]; then
+                  note "Auto-merge aborted: could not read this PR's checks (see the workflow log). Leaving this PR for review."
+                  exit 1
+                fi
+                stable=0
+                sleep 45
+                continue
+              fi
+            fi
+            errors=0
             others=$(jq -c --arg s "$SELF" '[.[] | select(.workflow != $s)]' <<<"$json")
             total=$(jq 'length' <<<"$others")
             pending=$(jq '[.[] | select(.bucket == "pending")] | length' <<<"$others")
