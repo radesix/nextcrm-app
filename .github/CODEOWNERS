@@ -25,3 +25,7 @@
 # Ways-of-working docs & skills (added in WS1/WS2)
 /docs/guides/                             @radesix
 /.claude/                                 @radesix
+
+# Dependency manifests — requests review on Dependabot PRs (maintenance kit).
+/package.json    @radesix
+/pnpm-lock.yaml  @radesix
