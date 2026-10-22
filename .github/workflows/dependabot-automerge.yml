@@ -1,0 +1,88 @@
+# Auto-merges Dependabot PRs for patch and minor updates once every other
+# check on the PR (CI, Vercel preview, etc.) has passed. Major updates, and any
+# PR whose checks fail or never report, are left open and assigned for review.
+#
+# Managed by the Rade maintenance kit — edit the kit template, not this copy.
+name: Dependabot auto-merge
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  automerge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Read Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Leave major updates for review
+        if: steps.meta.outputs.update-type == 'version-update:semver-major'
+        run: echo "Major update (${{ steps.meta.outputs.dependency-names }}) - leaving for manual review."
+
+      - name: Wait for checks, then merge
+        if: >-
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SELF: ${{ github.workflow }}
+        run: |
+          set -uo pipefail
+          note() { gh pr comment "$PR_URL" --body "$1" >/dev/null || true; echo "$1"; }
+
+          # Give CI and Vercel time to register their checks.
+          sleep 60
+          deadline=$((SECONDS + 2700))
+          stable=0
+          while :; do
+            json=$(gh pr checks "$PR_URL" --json name,bucket,workflow 2>/dev/null) || true
+            [ -z "$json" ] && json='[]'
+            others=$(jq -c --arg s "$SELF" '[.[] | select(.workflow != $s)]' <<<"$json")
+            total=$(jq 'length' <<<"$others")
+            pending=$(jq '[.[] | select(.bucket == "pending")] | length' <<<"$others")
+            failed=$(jq -r '[.[] | select(.bucket == "fail" or .bucket == "cancel") | .name] | join(", ")' <<<"$others")
+
+            if [ -n "$failed" ]; then
+              note "Auto-merge skipped: these checks did not pass: $failed. Leaving this PR for review."
+              exit 0
+            fi
+            if [ "$total" -gt 0 ] && [ "$pending" -eq 0 ]; then
+              # Require two consecutive all-green reads so a late-registering
+              # check (e.g. Vercel) is not missed.
+              stable=$((stable + 1))
+              [ "$stable" -ge 2 ] && break
+            else
+              stable=0
+            fi
+            if [ "$SECONDS" -gt "$deadline" ]; then
+              if [ "$total" -eq 0 ]; then
+                note "Auto-merge skipped: no CI or Vercel checks reported on this PR, so there was nothing to verify it against."
+              else
+                note "Auto-merge skipped: checks were still pending after 45 minutes."
+              fi
+              exit 0
+            fi
+            sleep 45
+          done
+
+          method=$(gh repo view --json squashMergeAllowed,mergeCommitAllowed \
+            -q 'if .squashMergeAllowed then "--squash" elif .mergeCommitAllowed then "--merge" else "--rebase" end')
+          gh pr merge "$PR_URL" $method --delete-branch --match-head-commit "$HEAD_SHA" \
+            || note "Auto-merge attempted but the merge failed (branch may have changed or conflicts exist)."

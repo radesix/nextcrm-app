@@ -1,0 +1,44 @@
+# Weekly dependency updates. PRs are assigned to @radesix so they show in the
+# GitHub mobile "Assigned" filter. Patch and minor updates auto-merge once CI and
+# the Vercel preview pass (see workflows/dependabot-automerge.yml); majors wait
+# for review.
+#
+# Managed by the Rade maintenance kit.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: America/Chicago
+    # Skip releases younger than a few days: compromised npm versions are
+    # usually caught and pulled within that window.
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 10
+    assignees: ["radesix"]
+    labels: ["dependencies", "automated"]
+    groups:
+      next:
+        patterns: ["next", "eslint-config-next", "@next/*"]
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      # Everything else that isn't a major bump goes in one PR.
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: America/Chicago
+    assignees: ["radesix"]
+    labels: ["dependencies", "automated"]
+    groups:
+      actions:
+        patterns: ["*"]
