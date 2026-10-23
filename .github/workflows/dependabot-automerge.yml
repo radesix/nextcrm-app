@@ -66,6 +66,9 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           SELF: ${{ github.workflow }}
         run: |
+          # Actions runs steps with `bash -e`; turn that off so every failure
+          # below ends in a PR comment rather than a silent non-zero exit.
+          set +e
           set -uo pipefail
           note() { gh pr comment "$PR_URL" --body "$1" >/dev/null || true; echo "$1"; }
 
@@ -126,7 +129,15 @@ jobs:
             sleep 45
           done
 
-          method=$(gh repo view --json squashMergeAllowed,mergeCommitAllowed \
-            -q 'if .squashMergeAllowed then "--squash" elif .mergeCommitAllowed then "--merge" else "--rebase" end')
-          gh pr merge "$PR_URL" $method --delete-branch --match-head-commit "$HEAD_SHA" \
-            || note "Auto-merge attempted but the merge failed (branch may have changed or conflicts exist)."
+          # Try each merge method the repo might allow. No settings lookup:
+          # gh's repo-view command needs a git checkout (it ignores GH_REPO without an
+          # argument), and this job never checks out the PR's code.
+          for method in --squash --merge --rebase; do
+            if out=$(gh pr merge "$PR_URL" $method --match-head-commit "$HEAD_SHA" 2>&1); then
+              echo "Merged with $method."
+              exit 0
+            fi
+            echo "$method not possible: $out" >&2
+          done
+          note "Auto-merge attempted but every merge method failed (branch may have changed, conflicts exist, or merging is restricted). Leaving this PR for review."
+          exit 1
