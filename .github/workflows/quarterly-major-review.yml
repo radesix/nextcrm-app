@@ -1,0 +1,124 @@
+# QUARTERLY tier of the dependency schedule (CI_AND_ENVIRONMENT_DESIGN.md §7a).
+# Dependabot never opens major-version PRs (dependabot.yml ignores them), so once a
+# quarter this opens ONE issue listing every npm dependency with a newer major, for
+# a deliberate upgrade pass. Security fixes don't wait for this: they arrive as
+# Dependabot security updates immediately.
+name: Quarterly major-version review
+
+on:
+  schedule:
+    # 1st of Jan / Apr / Jul / Oct, 13:00 UTC (7–8am Central).
+    - cron: '0 13 1 1,4,7,10 *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: quarterly-major-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    name: List available major upgrades
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A pinned major, not .nvmrc: many repos have no .nvmrc, and this job only
+      # reads versions, so the exact Node doesn't matter.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # pnpm projects: pnpm/action-setup takes the version from package.json's
+      # `packageManager`, and fails when neither that nor `version` is set (or when
+      # both are). So pass `version` only when `packageManager` doesn't name pnpm.
+      - name: Pick the pnpm version
+        id: pnpm
+        if: hashFiles('pnpm-lock.yaml') != ''
+        run: |
+          if node -e "process.exit(/^pnpm@/.test(require('./package.json').packageManager || '') ? 0 : 1)"; then
+            echo "version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        if: hashFiles('pnpm-lock.yaml') != ''
+        with:
+          version: ${{ steps.pnpm.outputs.version }}
+
+      # Needed so `outdated` knows the installed versions. No lifecycle
+      # scripts: this job only reads versions, it never builds anything.
+      - name: Install dependencies (no scripts)
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            pnpm install --frozen-lockfile --ignore-scripts
+          else
+            npm install --ignore-scripts --no-audit --no-fund
+          fi
+
+      - name: Find newer majors
+        id: majors
+        run: |
+          set -uo pipefail
+          # `outdated` exits 1 whenever anything is outdated; the JSON is what matters.
+          # Both write { name: { current, latest, … } } (npm may use an array per name).
+          if [ -f pnpm-lock.yaml ]; then
+            pnpm outdated --format json > outdated.json || true
+          else
+            npm outdated --json > outdated.json || true
+          fi
+          node --input-type=commonjs - <<'NODE'
+          const fs = require('fs')
+          const raw = fs.readFileSync('outdated.json', 'utf8').trim()
+          const outdated = raw ? JSON.parse(raw) : {}
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          const kind = (name) => (pkg.devDependencies?.[name] ? 'dev' : 'runtime')
+          const major = (v) => Number(String(v ?? '').replace(/^[^\d]*/, '').split('.')[0])
+          const rows = Object.entries(outdated)
+            .map(([name, info]) => ({ name, ...(Array.isArray(info) ? info[0] : info) }))
+            .filter((r) => r.current && r.latest && major(r.latest) > major(r.current))
+            .sort((a, b) => a.name.localeCompare(b.name))
+          const lines = [
+            'Dependabot skips major versions; this is the quarterly pass to take them on purpose.',
+            '',
+            '| Package | Current | Latest major | Type |',
+            '|---|---|---|---|',
+            ...rows.map((r) =>
+              `| [\`${r.name}\`](https://www.npmjs.com/package/${r.name}?activeTab=versions) | ${r.current} | ${r.latest} | ${kind(r.name)} |`,
+            ),
+            '',
+            '**How to work this issue**',
+            '- One PR per major, or per family that must move together (e.g. `next` + `eslint-config-next`, `vitest` + `@vitest/*`, every `@payloadcms/*` + `payload`).',
+            '- Read the release notes / migration guide first; run the full CI locally before opening the PR.',
+            "- If a major can't land yet, record why in `.github/dependabot.yml` (an `ignore` with a version range and the condition that lifts it) and note it here.",
+            '- Close this issue when every row is upgraded or deliberately deferred.',
+          ]
+          fs.writeFileSync('body.md', lines.join('\n') + '\n')
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `count=${rows.length}\n`)
+          console.log(`${rows.length} package(s) with a newer major.`)
+          NODE
+
+      - name: Open the quarterly issue
+        if: steps.majors.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          COUNT: ${{ steps.majors.outputs.count }}
+          # kit-setup: change the handle if this project has a different owner.
+          ASSIGNEE: radesix
+        run: |
+          set -euo pipefail
+          title="Quarterly major upgrade pass — $(date -u +%Y) Q$(( ($(date -u +%-m) + 2) / 3 ))"
+          # Re-runs (manual dispatch) must not duplicate the quarter's issue.
+          existing=$(gh issue list --repo "$GH_REPO" --state open --search "in:title \"$title\"" --json number --jq 'length')
+          if [ "$existing" != "0" ]; then
+            echo "Issue already open: $title"
+            exit 0
+          fi
+          gh issue create --repo "$GH_REPO" --title "$title" --body-file body.md --assignee "$ASSIGNEE"
+          echo "Opened: $title ($COUNT packages)"
