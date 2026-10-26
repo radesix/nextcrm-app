@@ -24,11 +24,11 @@ jobs:
     name: List available major upgrades
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # A pinned major, not .nvmrc: many repos have no .nvmrc, and this job only
       # reads versions, so the exact Node doesn't matter.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
 
