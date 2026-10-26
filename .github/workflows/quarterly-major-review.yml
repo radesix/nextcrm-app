@@ -8,7 +8,7 @@ name: Quarterly major-version review
 on:
   schedule:
     # 1st of Jan / Apr / Jul / Oct, 13:00 UTC (7–8am Central).
-    - cron: '0 13 1 1,4,7,10 *'
+    - cron: 0 13 1 1,4,7,10 *
   workflow_dispatch: {}
 
 permissions:
