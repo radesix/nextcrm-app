@@ -1,11 +1,14 @@
-# Dependency updates, consolidated so long CI/deploy pipelines see few PRs:
-#   - npm patch + minor  → ONE weekly PR, auto-merged once CI and the Vercel
-#                          preview pass (workflows/dependabot-automerge.yml)
-#   - npm majors         → ONE separate PR, always left for review (they often
-#                          need code changes and would block the weekly bundle)
-#   - security updates   → bundled into ONE PR per run (needs "Dependabot
-#                          security updates" on in Settings → Code security)
-#   - GitHub Actions     → ONE PR a month, left for review
+# Dependency updates on a tiered schedule, consolidated so long CI/deploy
+# pipelines see few PRs:
+#   - IMMEDIATELY  security updates   → bundled into ONE PR per run, outside the
+#                                       schedule and the cooldown (needs "Dependabot
+#                                       security updates" on in Settings → Code security)
+#   - WEEKLY       npm patch + minor  → ONE PR, auto-merged once CI and the Vercel
+#                                       preview pass (workflows/dependabot-automerge.yml)
+#   - MONTHLY      GitHub Actions     → ONE PR, left for review
+#   - QUARTERLY    npm majors         → no Dependabot PRs; done on purpose in the
+#                                       quarterly upgrade pass that
+#                                       workflows/quarterly-major-review.yml opens
 # PRs are assigned to @radesix so they show in the GitHub mobile "Assigned"
 # filter. Shipped by the starter kit (docs/guides/process/CI_AND_ENVIRONMENT_DESIGN.md §7a).
 version: 2
@@ -18,22 +21,28 @@ updates:
       time: "07:00"
       timezone: America/Chicago
     # Skip releases younger than a few days: compromised npm versions are
-    # usually caught and pulled within that window.
+    # usually caught and pulled within that window. Applies to version updates
+    # only — security updates are never delayed.
     cooldown:
       default-days: 3
     # Safety cap: a backlog can never arrive as a flood of PRs.
     open-pull-requests-limit: 2
     assignees: ["radesix"]
     labels: ["dependencies", "automated"]
+    ignore:
+      # QUARTERLY tier: no major version-update PRs. Majors usually need code
+      # changes, so they're done deliberately in the quarterly pass. An
+      # `update-types` ignore applies to version updates only, so a major that
+      # fixes a vulnerability still arrives as a security update.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # Repo-specific blocked ranges go below, each with the condition that lifts
+      # it (e.g. a TypeScript minor newer than typescript-eslint supports).
     groups:
       patch-and-minor:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
-      majors:
-        applies-to: version-updates
-        patterns: ["*"]
-        update-types: ["major"]
       security:
         applies-to: security-updates
         patterns: ["*"]
