@@ -1511,3 +1511,18 @@
   seed JSON only runs on fresh DBs), and keep a test that asserts every name the code uses
   appears in that migration (`__tests__/crm/assistant/inquiry-route.test.ts`). Admins can
   rename sources in CRM Settings, so a rename of these two must ship with a code change.
+
+### Fire-and-forget work at boot (`instrumentation.ts`) breaks on Vercel: a frozen instance strands it
+
+- **Symptom:** hundreds of `[PLUGIN_UPGRADE]` errors a day in production, alternating Prisma
+  `P2028` ("Unable to start a transaction in the given time", once "expired transaction" after
+  ~609 s) and Supavisor `EAUTHTIMEOUT`, mostly on `/api/inngest`. Each one logged 60–160 ms into a
+  request, far inside the 30 s `maxWait`, and CRM requests themselves were fine.
+- **Cause:** `register()` started `runPluginUpgrades()` with `void` so boot wouldn't wait. On
+  Vercel the instance freezes as soon as its first response is sent, so the DB connect or the
+  open upgrade transaction sat frozen. When the instance thawed for the next request, the
+  overdue timers fired at once, which is why the errors land within milliseconds.
+- **Fix / rule:** on Vercel, never leave un-awaited work running after a response. Skip it there
+  (`process.env.VERCEL === "1"`) and run it awaited inside a request: an Inngest function (cron +
+  event) for anything that can take a while, kept under the 300 s function limit. Upstream's
+  Docker deployment keeps the boot-time path.

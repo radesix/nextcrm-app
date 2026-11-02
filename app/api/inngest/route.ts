@@ -34,6 +34,7 @@ import { syncExchangeRates } from "@/inngest/functions/ecb/sync-exchange-rates";
 import { generateHomepage } from "@/inngest/functions/generate-homepage";
 import { sweepStuckHomepages } from "@/inngest/functions/sweep-stuck-homepages";
 import { getPluginFunctions } from "@/lib/plugins/inngest";
+import { runPluginUpgradesJob } from "@/inngest/functions/plugins/run-upgrades";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -71,6 +72,7 @@ export const { GET, POST, PUT } = serve({
     syncExchangeRates,
     generateHomepage,
     sweepStuckHomepages,
+    runPluginUpgradesJob,
     ...getPluginFunctions(),
   ],
 });

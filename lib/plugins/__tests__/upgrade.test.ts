@@ -55,3 +55,13 @@ it("returns without a transaction or query when the registry is empty (M1)", asy
   expect(db.installedPlugin.findMany).not.toHaveBeenCalled();
   emptyRegistry = false;
 });
+
+it("keeps the 10-minute transaction timeout by default and honours a caller timeout", async () => {
+  db.installedPlugin.findMany.mockResolvedValue([]);
+  db.$transaction.mockClear();
+  await runPluginUpgrades();
+  expect(db.$transaction.mock.calls[0][1]).toEqual({ timeout: 600_000, maxWait: 30_000 });
+  db.$transaction.mockClear();
+  await runPluginUpgrades({ timeoutMs: 240_000 });
+  expect(db.$transaction.mock.calls[0][1]).toEqual({ timeout: 240_000, maxWait: 30_000 });
+});
