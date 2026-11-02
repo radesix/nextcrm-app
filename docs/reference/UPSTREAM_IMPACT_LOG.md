@@ -1071,3 +1071,22 @@ response is sent. The upgrade now runs from a new fork-owned Inngest function,
 **Re-verify after any upstream merge:** `__tests__/plugins/instrumentation.test.ts`,
 `lib/plugins/__tests__/upgrade.test.ts` and `inngest/functions/__tests__/run-plugin-upgrades.test.ts`
 stay green (the first two are revert-verified).
+
+---
+
+## fix/session-impersonated-by — add `session.impersonatedBy` for the better-auth 1.7 startup check  (PR: TBD)
+
+better-auth 1.7 (Dependabot PR #69) checks its schema at startup and blocks every auth request
+because the admin plugin writes `session.impersonatedBy`, which the table never had. This
+**copies upstream's fix from `8cd319db` (#419) verbatim**, landed migration-first, ahead of the
+bump. **2 upstream-owned files** touched; the migration
+`prisma/migrations/20261029000000_session_impersonated_by/` also exists upstream, byte-identical
+(same folder name, so the same checksum).
+
+| Upstream file | +/− | Insert-only? | What / where | Risk |
+|---|---|---|---|---|
+| `prisma/schema.prisma` | +2/−0 | **insert-only** | Doc comment + `impersonatedBy String?` at the end of the `Session` model's fields, before `@@map("session")`. Identical to upstream's lines. | None: when upstream is synced, the same lines and migration merge cleanly, and Prisma sees the migration as already applied. |
+| `apps/docs/content/docs/developers/auth-permissions.mdx` | +1/−0 | **insert-only** | Upstream's "Schema check" bullet, after the "Admin plugin" bullet. Copied verbatim from `8cd319db`. | None (identical line; merges cleanly). |
+
+**Re-verify after any upstream merge:** `pnpm exec prisma validate`; the `Session` model has
+exactly one `impersonatedBy`; `prisma/migrations/` has exactly one `*_session_impersonated_by` folder.
