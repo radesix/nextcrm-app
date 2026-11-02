@@ -9,7 +9,7 @@ import { writePluginLog } from "./log";
 
 const LOCK_KEY = 735_201_004; // arbitrary constant for pg advisory lock
 
-export async function runPluginUpgrades(): Promise<void> {
+export async function runPluginUpgrades(opts: { timeoutMs?: number } = {}): Promise<void> {
   if (getRegistry().length === 0) return; // zero-plugin instances: no transaction, no queries
   // Transaction-scoped lock: released automatically on commit/rollback, on the same connection that took it.
   await prismaBase.$transaction(
@@ -37,6 +37,6 @@ export async function runPluginUpgrades(): Promise<void> {
       }
       invalidatePluginCache();
     },
-    { timeout: 10 * 60_000, maxWait: 30_000 },
+    { timeout: opts.timeoutMs ?? 10 * 60_000, maxWait: 30_000 },
   );
 }

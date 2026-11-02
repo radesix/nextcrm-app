@@ -12,3 +12,16 @@ it("does not block boot on plugin upgrades (M1)", async () => {
   expect(done).toHaveBeenCalled();
   release();
 });
+
+it("skips the boot-time upgrade on Vercel, where a frozen instance would strand it", async () => {
+  process.env.NEXT_RUNTIME = "nodejs";
+  delete process.env.SKIP_ENV_VALIDATION;
+  process.env.VERCEL = "1";
+  runPluginUpgrades.mockClear();
+  try {
+    await register();
+    expect(runPluginUpgrades).not.toHaveBeenCalled();
+  } finally {
+    delete process.env.VERCEL;
+  }
+});

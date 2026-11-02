@@ -1050,3 +1050,24 @@ push trigger no longer includes `main` (revert-verified against upstream's `[dev
 **Re-verify after any upstream merge:** `bash scripts/check-invariants.sh` passes, and after the
 merge lands, `gh run list --workflow advance-qa.yml` shows a run for the merge commit.
 
+
+---
+
+## fix/plugin-upgrades-off-vercel-boot — run plugin upgrades from Inngest, not on Vercel boot  (PR: TBD)
+
+Production logged `[PLUGIN_UPGRADE]` P2028 / Supavisor `EAUTHTIMEOUT` on every cold instance after
+the v0.36 sync. Upstream's `instrumentation.ts` starts `runPluginUpgrades()` without awaiting it,
+which suits a long-lived Docker server but not Vercel, where the instance freezes once the first
+response is sent. The upgrade now runs from a new fork-owned Inngest function,
+`inngest/functions/plugins/run-upgrades.ts` (hourly + `plugin/upgrades.run` event).
+**3 upstream-owned files** touched.
+
+| Upstream file | +/− | Insert-only? | What / where | Risk |
+|---|---|---|---|---|
+| `instrumentation.ts` | +3/−0 | **insert-only** | `if (process.env.VERCEL === "1") return;` plus a fork comment, after the `SKIP_ENV_VALIDATION` guard. Docker/self-hosted boot is unchanged. | Low |
+| `lib/plugins/upgrade.ts` | +2/−2 | **two-line rewrite** | `runPluginUpgrades(opts: { timeoutMs?: number } = {})`, and the transaction `timeout` reads `opts.timeoutMs ?? 10 * 60_000`. Default behaviour unchanged. | Low–medium (if upstream edits the signature or the transaction options, keep the optional `timeoutMs`) |
+| `app/api/inngest/route.ts` | +2/−0 | **insert-only** | Import `runPluginUpgradesJob` and list it before `...getPluginFunctions()`. | Low |
+
+**Re-verify after any upstream merge:** `__tests__/plugins/instrumentation.test.ts`,
+`lib/plugins/__tests__/upgrade.test.ts` and `inngest/functions/__tests__/run-plugin-upgrades.test.ts`
+stay green (the first two are revert-verified).
