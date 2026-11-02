@@ -46,7 +46,7 @@ jobs:
           fi
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         if: hashFiles('pnpm-lock.yaml') != ''
         with:
           version: ${{ steps.pnpm.outputs.version }}
@@ -96,6 +96,7 @@ jobs:
             '- One PR per major, or per family that must move together (e.g. `next` + `eslint-config-next`, `vitest` + `@vitest/*`, every `@payloadcms/*` + `payload`).',
             '- Read the release notes / migration guide first; run the full CI locally before opening the PR.',
             "- If a major can't land yet, record why in `.github/dependabot.yml` (an `ignore` with a version range and the condition that lifts it) and note it here.",
+            '- Also review the open parked-alert issues in radesix/dev-ops that list this repo, and lift any whose condition is now met.',
             '- Close this issue when every row is upgraded or deliberately deferred.',
           ]
           fs.writeFileSync('body.md', lines.join('\n') + '\n')
