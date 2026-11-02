@@ -198,6 +198,18 @@
   `engines` (Node ≥22.12) — use that pnpm, not a globally-installed different major,
   or the lockfile format can churn.
 
+### A fresh Dependabot bump fails `pnpm install` with `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`
+
+- **Symptom:** a Dependabot PR fails `Fast checks` and `E2E report` at the install step,
+  before any typecheck or test runs, naming a transitive package "within the
+  minimumReleaseAge cutoff" (PR #69: `set-cookie-parser@3.2.2`, published ~11 h before CI).
+- **Cause:** pnpm 11 refuses lockfile entries younger than 24 h by default (a supply-chain
+  guard; `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` lists exceptions). Dependabot
+  can open a PR within hours of a release.
+- **Fix / rule:** don't edit the lockfile or loosen the policy. Once the package is past
+  24 h, re-run the failed jobs (`gh run rerun <id> --failed --repo radesix/nextcrm-app`).
+  Treat the re-run as the first real test of the bump: the earlier run never got past install.
+
 ## Git / CI automation
 
 ### A workflow can't create a branch with `git push origin HEAD:<name>`
@@ -439,6 +451,23 @@
   Never move `DATABASE_URL` itself to `:6543` (breaks migration DDL/advisory locks).
 - **Tell:** the digest resolves to `FAILED_TO_GET_SESSION` and the error underneath
   it is `EMAXCONNSESSION … session mode`. It's infra, not the feature you just shipped.
+
+### better-auth 1.7+ refuses every auth request if a column it writes is missing
+
+- **Symptom:** after a better-auth bump, unit tests, typecheck and the build all pass, but
+  E2E dies at `tests/auth.setup.ts` (send-OTP returns non-2xx) and every later test is
+  skipped. Server logs: `BetterAuthError: Prisma schema mismatch … Missing columns
+  session.impersonatedBy` (`code: 'SCHEMA_MISMATCH'`).
+- **Cause:** from 1.7, better-auth checks the Prisma schema against what its plugins write
+  and fails closed on any gap. The admin plugin writes `session.impersonatedBy`, which the
+  table never had. Only a running server hits the check, so nothing but E2E catches it,
+  and in production nobody could sign in.
+- **Fix / rule:** before merging a better-auth minor/major bump, read the startup log (or
+  E2E) for `SCHEMA_MISMATCH` and add the missing columns as a **migration-first** PR (old
+  versions ignore extra nullable columns). Check `upstream/main` first: copy its migration
+  verbatim (same folder name) so a later sync doesn't apply it twice. Upstream fixed this
+  one in #419 with `20261029000000_session_impersonated_by`.
+- **Tell:** E2E fails at auth setup while Fast checks, Integration and Build are all green.
 
 ## Auth / local dev
 
